@@ -37,6 +37,8 @@ export default function LoginPage() {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
       minHeight: '100vh',
+      maxWidth: '100vw',
+      overflowX: 'hidden',
       background: 'var(--c900)'
     }}>
       {/* ── LEFT BRAND PANEL ─────────────────────────────── */}
@@ -156,13 +158,16 @@ export default function LoginPage() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '3rem clamp(2rem, 6vw, 5rem)'
+        padding: '3rem clamp(1.25rem, 5vw, 4rem)',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box'
       }}>
-        <div style={{ width: '100%', maxWidth: '400px' }}>
+        <div style={{ width: '100%', maxWidth: '400px', margin: '0 auto' }}>
           
           <div className="login-logo-mobile" style={{ display: 'none', marginBottom: '2rem' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Official_Logo.jpeg" alt="Marketivity" style={{ height: '36px', objectFit: 'contain' }} />
+            <img src="/Official_Logo.jpeg" alt="Marketivity" style={{ height: '36px', maxWidth: '100%', objectFit: 'contain' }} />
           </div>
 
           <div style={{
@@ -184,11 +189,11 @@ export default function LoginPage() {
           <h2 style={{
             fontFamily: 'var(--fh)', fontSize: 'clamp(1.375rem, 2.5vw, 1.75rem)',
             fontWeight: 800, letterSpacing: '-.025em', color: 'var(--c900)',
-            marginBottom: '.625rem'
+            marginBottom: '.625rem', lineHeight: 1.2
           }}>Welcome back.</h2>
           <p style={{
             fontSize: '.9375rem', color: 'var(--c500)', lineHeight: 1.65,
-            marginBottom: '2.5rem'
+            marginBottom: '2rem'
           }}>Sign in to view your campaign performance and the latest updates from your Marketivity team.</p>
 
           {error && (
@@ -199,7 +204,7 @@ export default function LoginPage() {
               marginBottom: '1.25rem', fontSize: '.875rem', color: '#B91C1C',
               fontFamily: 'var(--fh)', fontWeight: 500
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               <span>{error}</span>
             </div>
           )}
@@ -221,10 +226,10 @@ export default function LoginPage() {
                   type="email" id="email" name="email" placeholder="your@email.com" required
                   value={email} onChange={(e) => setEmail(e.target.value)}
                   style={{
-                    width: '100%', padding: '13px 16px 13px 42px',
-                    fontFamily: 'var(--fb)', fontSize: '.9375rem', color: 'var(--c900)',
+                    width: '100%', minHeight: '48px', padding: '12px 16px 12px 42px',
+                    fontFamily: 'var(--fb)', fontSize: '1rem', color: 'var(--c900)',
                     background: 'var(--white)', border: '1.5px solid var(--c200)',
-                    borderRadius: 'var(--r-md)', outline: 'none'
+                    borderRadius: 'var(--r-md)', outline: 'none', boxSizing: 'border-box'
                   }} 
                 />
               </div>
@@ -246,18 +251,24 @@ export default function LoginPage() {
                   type={showPassword ? "text" : "password"} id="password" name="password" placeholder="••••••••" required
                   value={password} onChange={(e) => setPassword(e.target.value)}
                   style={{
-                    width: '100%', padding: '13px 16px 13px 42px',
-                    fontFamily: 'var(--fb)', fontSize: '.9375rem', color: 'var(--c900)',
+                    width: '100%', minHeight: '48px', padding: '12px 48px 12px 42px',
+                    fontFamily: 'var(--fb)', fontSize: '1rem', color: 'var(--c900)',
                     background: 'var(--white)', border: '1.5px solid var(--c200)',
-                    borderRadius: 'var(--r-md)', outline: 'none'
+                    borderRadius: 'var(--r-md)', outline: 'none', boxSizing: 'border-box'
                   }} 
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{
-                  position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c400)',
-                  display: 'flex', alignItems: 'center'
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  style={{
+                    position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)',
+                    width: '44px', height: '44px', minWidth: '44px', minHeight: '44px',
+                    background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c400)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     {showPassword ? (
                       <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
                     ) : (
@@ -269,15 +280,22 @@ export default function LoginPage() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '1.75rem' }}>
-              <a href="#" style={{
-                fontFamily: 'var(--fh)', fontSize: '.8125rem', fontWeight: 600,
-                color: 'var(--orange-600)', textDecoration: 'none'
-              }}>Forgot password?</a>
+              <a 
+                href="mailto:hello@marketivity.com?subject=Password%20Reset%20Request" 
+                style={{
+                  fontFamily: 'var(--fh)', fontSize: '.8125rem', fontWeight: 600,
+                  color: 'var(--orange-600)', textDecoration: 'none',
+                  minHeight: '44px', display: 'inline-flex', alignItems: 'center',
+                  padding: '4px 0'
+                }}
+              >
+                Forgot password?
+              </a>
             </div>
 
             <button type="submit" disabled={loading} style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem',
-              fontFamily: 'var(--fh)', fontSize: '.9375rem', fontWeight: 700,
+              width: '100%', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem',
+              fontFamily: 'var(--fh)', fontSize: '1rem', fontWeight: 700,
               background: 'var(--c900)', color: 'var(--white)', border: 'none', borderRadius: 'var(--r-md)',
               padding: '14px 28px', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '.01em',
               boxShadow: 'var(--sh-lg)', position: 'relative', overflow: 'hidden'
@@ -297,7 +315,7 @@ export default function LoginPage() {
           </form>
 
           <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '.8125rem', color: 'var(--c500)' }}>
-            Need access? <a href="mailto:hello@marketivity.com" style={{ color: 'var(--orange-600)', textDecoration: 'none', fontWeight: 600 }}>Contact Marketivity</a>
+            Need access? <a href="mailto:hello@marketivity.com" style={{ color: 'var(--orange-600)', textDecoration: 'none', fontWeight: 600, padding: '4px' }}>Contact Marketivity</a>
           </div>
 
         </div>
@@ -306,7 +324,7 @@ export default function LoginPage() {
         @media (max-width: 900px) {
           div[style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
           .left-panel { display: none !important; }
-          .right-panel { min-height: 100vh !important; padding: 2.5rem 1.5rem !important; }
+          .right-panel { min-height: 100vh !important; padding: 2.5rem clamp(1.25rem, 5vw, 2.5rem) !important; width: 100% !important; max-width: 100vw !important; overflow-x: hidden !important; }
           .login-logo-mobile { display: block !important; }
         }
       `}} />

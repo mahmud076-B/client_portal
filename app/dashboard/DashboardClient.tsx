@@ -1,6 +1,7 @@
 'use client';
 import './dashboard.css';
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Chart from 'chart.js/auto';
@@ -32,6 +33,18 @@ export default function DashboardClient({
   const supabase = createClient();
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sidebarOpen) {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
 
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newParams = new URLSearchParams(searchParams.toString());
@@ -156,34 +169,34 @@ export default function DashboardClient({
       
 
   
-  <aside className="sidebar" id="sidebar">
+  <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`} id="sidebar" aria-label="Main sidebar navigation">
     <div className="sidebar-brand">
-      <img src="../Official_Logo.jpeg" alt="Marketivity" />
+      <Link href="/dashboard" onClick={() => setSidebarOpen(false)} style={{ display: 'inline-flex', alignItems: 'center' }}>
+        <img src="/Official_Logo.jpeg" alt="Marketivity" />
+      </Link>
+      <button 
+        type="button" 
+        className="sidebar-close-btn" 
+        onClick={() => setSidebarOpen(false)} 
+        aria-label="Close navigation sidebar"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
     <div className="sidebar-section-label">Navigation</div>
     <ul className="sidebar-nav">
       <li>
-        <a href="#" className="active" id="navDashboard">
+        <Link 
+          href="/dashboard" 
+          className="active" 
+          id="navDashboard"
+          onClick={() => setSidebarOpen(false)}
+        >
           <span className="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
           Dashboard
-        </a>
+        </Link>
       </li>
-      <li>
-        <a href="#" id="navCampaigns">
-          <span className="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-          Campaigns
-          <span className="nav-badge">1</span>
-        </a>
-      </li>
-      <li>
-        <a href="#" id="navUpdates">
-          <span className="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-          Updates
-          <span className="nav-badge">2</span>
-        </a>
-      </li>
-
     </ul>
 
     <div className="sidebar-bottom">
@@ -194,33 +207,52 @@ export default function DashboardClient({
           <div className="client-company">{client?.name || 'Marketivity Client'}</div>
         </div>
       </div>
-      <a href="#" onClick={handleSignOut} className="logout-link">
+      <button 
+        type="button" 
+        onClick={handleSignOut} 
+        className="logout-link" 
+        id="navLogout"
+        aria-label="Sign out of your account"
+      >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Sign Out
-      </a>
+      </button>
     </div>
   </aside>
 
-  
-  <div className="mobile-overlay" id="mobileOverlay"></div>
+  <div 
+    className={`mobile-overlay ${sidebarOpen ? 'open' : ''}`} 
+    id="mobileOverlay" 
+    onClick={() => setSidebarOpen(false)}
+    aria-hidden={!sidebarOpen}
+  ></div>
 
-  
   <div className="main-area">
 
-    
     <header className="topbar">
       <div className="topbar-left">
-        <button className="hamburger" id="hamburger" aria-label="Toggle navigation">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <button 
+          type="button"
+          className="hamburger" 
+          id="hamburger" 
+          aria-label="Toggle navigation menu"
+          aria-expanded={sidebarOpen}
+          onClick={() => setSidebarOpen(prev => !prev)}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
         <span className="page-title">Campaign Dashboard</span>
       </div>
       <div className="topbar-right">
-        <div className="sync-pill" style={{ whiteSpace: 'nowrap' }}>
+        <div className="sync-pill">
           <span className="sync-dot"></span>
-          {lastSyncedAt ? `Last synced: ${new Date(lastSyncedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet'}
+          <span className="sync-text-wrap">
+            {lastSyncedAt ? `Last synced: ${new Date(lastSyncedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet'}
+          </span>
         </div>
-        <div className="topbar-avatar">{profile?.full_name ? profile.full_name.substring(0, 2).toUpperCase() : 'CL'}</div>
+        <div className="topbar-avatar" title={profile?.full_name || 'Client'}>
+          {profile?.full_name ? profile.full_name.substring(0, 2).toUpperCase() : 'CL'}
+        </div>
       </div>
     </header>
 
@@ -286,12 +318,12 @@ export default function DashboardClient({
             <span className="platform-chip">Instagram</span>
           </div>
         </div>
-        <div className="date-select">
-          <button className={`date-btn ${range === 'today' ? 'active' : ''}`} onClick={() => handleRangeChange('today')}>Today</button>
-          <button className={`date-btn ${range === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')}>7d</button>
-          <button className={`date-btn ${range === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')}>14d</button>
-          <button className={`date-btn ${range === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')}>30d</button>
-          <button className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} title="All available data">Max</button>
+        <div className="date-select" role="group" aria-label="Reporting date range">
+          <button type="button" className={`date-btn ${range === 'today' ? 'active' : ''}`} onClick={() => handleRangeChange('today')} aria-pressed={range === 'today'}>Today</button>
+          <button type="button" className={`date-btn ${range === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')} aria-pressed={range === '7'}>7d</button>
+          <button type="button" className={`date-btn ${range === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')} aria-pressed={range === '14'}>14d</button>
+          <button type="button" className={`date-btn ${range === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')} aria-pressed={range === '30'}>30d</button>
+          <button type="button" className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} aria-pressed={range === 'maximum'} title="All available data">Max</button>
         </div>
       </div>
 
@@ -365,7 +397,7 @@ export default function DashboardClient({
             <div className="kpi-sm-label">CPM</div>
             <div className="kpi-sm-value">${aggregates?.cpm?.toFixed(2) || '0.00'}</div>
           </div>
-          <div className="kpi-card-sm" style={{ visibility: 'hidden' }}>
+          <div className="kpi-card-sm kpi-card-placeholder" style={{ visibility: 'hidden' }}>
             <div className="kpi-sm-label">Frequency</div>
             <div className="kpi-sm-value">0.00</div>
           </div>
@@ -476,28 +508,6 @@ export default function DashboardClient({
   </div>
 
   
-  <nav className="mobile-nav">
-    <a href="#" className="mob-nav-item active">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      Dashboard
-    </a>
-    <a href="#" className="mob-nav-item">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      Campaigns
-    </a>
-    <a href="#" className="mob-nav-item">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      Updates
-    </a>
-
-    <a href="#" onClick={handleSignOut} className="mob-nav-item">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      Sign Out
-    </a>
-  </nav>
-
-  
-
     </>
   );
 }
