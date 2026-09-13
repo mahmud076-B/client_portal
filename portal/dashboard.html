@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Campaign Dashboard — Marketivity Client Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Design System Tokens v1.0 ──────────────────────────── */
+    :root {
+      --orange-500: #F7931E;
+      --orange-400: #FAA84B;
+      --orange-600: #E07910;
+      --orange-100: #FEF3E6;
+      --purple-500: #6F42C1;
+      --purple-400: #9B7DD4;
+      --purple-100: #F0EBFB;
+      --c900: #181818;
+      --c800: #222222;
+      --c700: #2E2E2E;
+      --c600: #3D3D3D;
+      --c500: #6B6B6B;
+      --c400: #9A9A9A;
+      --c300: #C8C8C8;
+      --c200: #E5E5E0;
+      --c100: #F2F1EE;
+      --white: #FAFAF8;
+      --fh: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --fb: 'DM Sans', system-ui, sans-serif;
+      --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 20px; --r-2xl: 32px; --r-pill: 999px;
+      --sh-xs: 0 1px 2px rgba(0,0,0,.06);
+      --sh-sm: 0 2px 8px rgba(0,0,0,.07);
+      --sh-md: 0 4px 20px rgba(0,0,0,.09);
+      --sh-lg: 0 8px 40px rgba(0,0,0,.11);
+      --sh-org: 0 4px 20px rgba(247,147,30,.20);
+      --ease-io: cubic-bezier(.4,0,.2,1);
+      --spring: cubic-bezier(.34,1.56,.64,1);
+
+      /* Layout */
+      --sidebar-w: 240px;
+      --topbar-h: 64px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; scroll-behavior: smooth; }
+    body {
+      font-family: var(--fb);
+      background: var(--c100);
+      color: var(--c900);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       SIDEBAR NAV
+    ═══════════════════════════════════════════════════════════ */
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--c900);
+      display: flex; flex-direction: column;
+      z-index: 100;
+      overflow: hidden;
+    }
+    /* Subtle geometric accent on sidebar */
+    .sidebar::after {
+      content: '';
+      position: absolute; bottom: -60px; right: -60px;
+      width: 200px; height: 200px;
+      border: 1px solid rgba(247,147,30,.06);
+      border-radius: var(--r-xl); transform: rotate(20deg);
+      pointer-events: none;
+    }
+    .sidebar-brand {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      flex-shrink: 0;
+    }
+    .sidebar-brand img { height: 34px; object-fit: contain; filter: brightness(1.05); }
+
+    .sidebar-section-label {
+      font-family: var(--fh);
+      font-size: .6rem; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--c600);
+      padding: 1.25rem 1.5rem .5rem;
+    }
+    .sidebar-nav { list-style: none; padding: 0 .75rem; flex: 1; overflow-y: auto; }
+    .sidebar-nav li { margin-bottom: 2px; }
+    .sidebar-nav a {
+      display: flex; align-items: center; gap: .75rem;
+      font-family: var(--fh); font-size: .875rem; font-weight: 600;
+      color: var(--c400); text-decoration: none;
+      padding: .625rem .875rem;
+      border-radius: var(--r-md);
+      transition: background 150ms var(--ease-io), color 150ms;
+      position: relative;
+    }
+    .sidebar-nav a:hover { background: rgba(255,255,255,.05); color: var(--c200); }
+    .sidebar-nav a.active {
+      background: rgba(247,147,30,.12);
+      color: var(--orange-400);
+    }
+    .sidebar-nav a.active .nav-icon { color: var(--orange-500); }
+    .nav-icon { color: var(--c600); transition: color 150ms; flex-shrink: 0; }
+    .sidebar-nav a:hover .nav-icon { color: var(--c400); }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--orange-500); color: var(--white);
+      font-size: .6rem; font-weight: 700;
+      padding: 2px 6px; border-radius: var(--r-pill);
+      font-family: var(--fh);
+    }
+
+    .sidebar-bottom {
+      padding: 1rem .75rem 1.25rem;
+      border-top: 1px solid rgba(255,255,255,.06);
+      flex-shrink: 0;
+    }
+    .client-identity {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .625rem .875rem;
+      border-radius: var(--r-md);
+      margin-bottom: .5rem;
+    }
+    .client-avatar {
+      width: 32px; height: 32px; border-radius: var(--r-pill);
+      background: linear-gradient(135deg, var(--orange-500), var(--purple-500));
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      color: var(--white); flex-shrink: 0;
+    }
+    .client-name { font-family: var(--fh); font-size: .8125rem; font-weight: 700; color: var(--c200); }
+    .client-company { font-size: .7rem; color: var(--c500); }
+    .logout-link {
+      display: flex; align-items: center; gap: .75rem;
+      font-family: var(--fh); font-size: .8125rem; font-weight: 600;
+      color: var(--c500); text-decoration: none;
+      padding: .5rem .875rem; border-radius: var(--r-md);
+      transition: background 150ms, color 150ms;
+    }
+    .logout-link:hover { background: rgba(255,255,255,.04); color: var(--c300); }
+
+    /* ═══════════════════════════════════════════════════════════
+       MAIN AREA
+    ═══════════════════════════════════════════════════════════ */
+    .main-area {
+      margin-left: var(--sidebar-w);
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      height: var(--topbar-h);
+      background: rgba(250,250,248,.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--c200);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 1rem; }
+    .hamburger {
+      display: none;
+      background: none; border: none; cursor: pointer;
+      color: var(--c700); padding: .25rem;
+    }
+    .page-title {
+      font-family: var(--fh); font-size: .9375rem; font-weight: 700;
+      color: var(--c900);
+    }
+    .topbar-right { display: flex; align-items: center; gap: 1rem; }
+    .sync-pill {
+      display: flex; align-items: center; gap: .4rem;
+      font-family: var(--fh); font-size: .7rem; font-weight: 600;
+      color: var(--c500); letter-spacing: .02em;
+    }
+    .sync-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #22C55E;
+      box-shadow: 0 0 0 3px rgba(34,197,94,.15);
+    }
+    .topbar-avatar {
+      width: 34px; height: 34px; border-radius: var(--r-pill);
+      background: linear-gradient(135deg, var(--orange-500), var(--purple-500));
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--fh); font-size: .8125rem; font-weight: 700; color: var(--white);
+      cursor: pointer; flex-shrink: 0;
+    }
+
+    /* ── Page content ── */
+    .content {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       DASHBOARD HEADER
+    ═══════════════════════════════════════════════════════════ */
+    .dash-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1.5rem; flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    .dash-greeting {
+      font-family: var(--fh);
+      font-size: clamp(1.375rem, 2.5vw, 1.875rem);
+      font-weight: 800; letter-spacing: -.025em;
+      color: var(--c900);
+    }
+    .dash-sub {
+      font-size: .9375rem; color: var(--c500);
+      margin-top: .375rem; line-height: 1.5;
+    }
+    .status-live {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(34,197,94,.08);
+      border: 1px solid rgba(34,197,94,.2);
+      color: #16A34A;
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase;
+      padding: .375rem .875rem; border-radius: var(--r-pill);
+    }
+    .status-live .live-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #22C55E;
+      animation: pulse-live 2s ease-in-out infinite;
+      box-shadow: 0 0 0 3px rgba(34,197,94,.2);
+    }
+    @keyframes pulse-live {
+      0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
+      50% { box-shadow: 0 0 0 5px rgba(34,197,94,.08); }
+    }
+    .status-paused {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(234,179,8,.08);
+      border: 1px solid rgba(234,179,8,.2);
+      color: #B45309;
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase;
+      padding: .375rem .875rem; border-radius: var(--r-pill);
+    }
+    .status-attention {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(239,68,68,.08);
+      border: 1px solid rgba(239,68,68,.2);
+      color: #B91C1C;
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase;
+      padding: .375rem .875rem; border-radius: var(--r-pill);
+    }
+    .sync-text {
+      font-family: var(--fh); font-size: .75rem; font-weight: 500;
+      color: var(--c500); display: flex; align-items: center; gap: .375rem;
+      margin-top: .5rem;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       CAMPAIGN SELECTOR BAR
+    ═══════════════════════════════════════════════════════════ */
+    .campaign-bar {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--sh-xs);
+    }
+    .selector-group { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+    .selector-label {
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--c500);
+    }
+    .selector-val {
+      font-family: var(--fh); font-size: .875rem; font-weight: 700;
+      color: var(--c900);
+    }
+    .campaign-bar-divider { width: 1px; height: 36px; background: var(--c200); flex-shrink: 0; }
+    .platform-icons { display: flex; align-items: center; gap: .375rem; }
+    .platform-chip {
+      font-family: var(--fh); font-size: .7rem; font-weight: 700;
+      padding: .25rem .625rem; border-radius: var(--r-pill);
+      background: var(--c100); color: var(--c600);
+    }
+
+    .date-select {
+      margin-left: auto;
+      display: flex; align-items: center; gap: .75rem;
+    }
+    .date-btn {
+      font-family: var(--fh); font-size: .8125rem; font-weight: 600;
+      color: var(--c600); background: none; border: none; cursor: pointer;
+      padding: .375rem .75rem; border-radius: var(--r-md);
+      transition: background 150ms, color 150ms;
+      white-space: nowrap;
+    }
+    .date-btn:hover { background: var(--c100); color: var(--c900); }
+    .date-btn.active {
+      background: var(--c900); color: var(--white);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       KPI CARDS
+    ═══════════════════════════════════════════════════════════ */
+    .kpi-section { margin-bottom: 1.5rem; }
+    .section-eyebrow {
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--orange-500); margin-bottom: .5rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    .kpi-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1.375rem 1.25rem;
+      position: relative; overflow: hidden;
+      box-shadow: var(--sh-xs);
+      transition: transform 200ms var(--ease-io), box-shadow 200ms var(--ease-io);
+    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+    .kpi-card-accent {
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--c200);
+      border-radius: var(--r-xl) var(--r-xl) 0 0;
+    }
+    .kpi-card.primary .kpi-card-accent { background: var(--orange-500); }
+    .kpi-card.purple .kpi-card-accent { background: var(--purple-500); }
+    .kpi-card.green .kpi-card-accent { background: #22C55E; }
+
+    .kpi-label {
+      font-family: var(--fh); font-size: .7rem; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase;
+      color: var(--c500); margin-bottom: .625rem;
+      display: flex; align-items: center; gap: .375rem;
+    }
+    .kpi-value {
+      font-family: var(--fh); font-size: 1.75rem; font-weight: 800;
+      letter-spacing: -.03em; color: var(--c900);
+      line-height: 1; margin-bottom: .5rem;
+    }
+    .kpi-card.primary .kpi-value { color: var(--c900); }
+    .kpi-delta {
+      font-family: var(--fh); font-size: .75rem; font-weight: 600;
+      display: flex; align-items: center; gap: .25rem;
+    }
+    .delta-up   { color: #16A34A; }
+    .delta-down { color: #DC2626; }
+    .delta-neu  { color: var(--c500); }
+    .kpi-subtext {
+      font-size: .7rem; color: var(--c500);
+      margin-top: .25rem; line-height: 1.4;
+    }
+
+    /* Secondary KPI row */
+    .kpi-grid-sec {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem; margin-top: 1rem;
+    }
+    .kpi-card-sm {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-lg);
+      padding: 1rem 1.125rem;
+      box-shadow: var(--sh-xs);
+      transition: transform 200ms var(--ease-io);
+    }
+    .kpi-card-sm:hover { transform: translateY(-2px); }
+    .kpi-sm-label {
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .05em; text-transform: uppercase;
+      color: var(--c400); margin-bottom: .5rem;
+    }
+    .kpi-sm-value {
+      font-family: var(--fh); font-size: 1.25rem; font-weight: 800;
+      letter-spacing: -.025em; color: var(--c900);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       PERFORMANCE CHART
+    ═══════════════════════════════════════════════════════════ */
+    .chart-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1.5rem;
+      box-shadow: var(--sh-xs);
+      margin-bottom: 1.5rem;
+    }
+    .chart-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+    }
+    .chart-title {
+      font-family: var(--fh); font-size: 1rem; font-weight: 700;
+      color: var(--c900);
+    }
+    .chart-sub {
+      font-size: .8125rem; color: var(--c500); margin-top: .25rem;
+    }
+    .chart-tabs { display: flex; gap: .375rem; }
+    .chart-tab {
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      padding: .375rem .875rem; border-radius: var(--r-pill);
+      border: 1px solid var(--c200); background: none; cursor: pointer;
+      color: var(--c500); transition: all 150ms var(--ease-io);
+    }
+    .chart-tab:hover { border-color: var(--c400); color: var(--c700); }
+    .chart-tab.active { background: var(--c900); border-color: var(--c900); color: var(--white); }
+    .chart-wrapper { position: relative; height: 240px; }
+    .chart-notice {
+      text-align: center; padding: 1rem 0 .5rem;
+      font-family: var(--fh); font-size: .7rem; font-weight: 600;
+      color: var(--c400); letter-spacing: .02em;
+    }
+    .chart-notice span { color: var(--orange-600); }
+
+    /* ═══════════════════════════════════════════════════════════
+       TWO COLUMN LAYOUT
+    ═══════════════════════════════════════════════════════════ */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .col-left, .col-right { display: flex; flex-direction: column; gap: 1.5rem; }
+
+    /* ── Campaign Status Card ── */
+    .status-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1.5rem;
+      box-shadow: var(--sh-xs);
+    }
+    .card-title {
+      font-family: var(--fh); font-size: .875rem; font-weight: 700;
+      color: var(--c900); margin-bottom: 1.25rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title-icon {
+      width: 32px; height: 32px; border-radius: var(--r-md);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--c100);
+    }
+    .status-indicator {
+      display: inline-flex; align-items: center; gap: .5rem;
+      font-family: var(--fh); font-size: .75rem; font-weight: 700;
+      letter-spacing: .04em; padding: .375rem .875rem;
+      border-radius: var(--r-pill); margin-bottom: 1.25rem;
+    }
+    .si-live { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); color: #16A34A; }
+    .si-live .si-dot { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; animation: pulse-live 2s infinite; }
+    .si-paused { background: rgba(234,179,8,.08); border: 1px solid rgba(234,179,8,.2); color: #B45309; }
+    .si-issue  { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.2);  color: #B91C1C; }
+
+    .status-description {
+      font-size: .875rem; color: var(--c600);
+      line-height: 1.65; margin-bottom: 1.25rem;
+    }
+    .status-details { display: flex; flex-direction: column; gap: .625rem; }
+    .detail-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .5rem 0;
+      border-bottom: 1px solid var(--c100);
+      font-size: .8125rem;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-key { font-family: var(--fh); font-weight: 600; color: var(--c500); }
+    .detail-val { font-family: var(--fh); font-weight: 700; color: var(--c900); }
+    .detail-val-orange { color: var(--orange-600); }
+
+    /* ── Marketivity Update Card ── */
+    .update-card {
+      background: var(--c900);
+      border-radius: var(--r-xl);
+      padding: 1.5rem;
+      box-shadow: var(--sh-lg);
+      position: relative; overflow: hidden;
+    }
+    .update-card::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 100% 0%, rgba(247,147,30,.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .update-inner { position: relative; z-index: 1; }
+    .update-type {
+      display: inline-flex; align-items: center; gap: .5rem;
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      padding: .25rem .75rem; border-radius: var(--r-pill);
+      margin-bottom: 1rem;
+    }
+    .update-type-perf { background: rgba(247,147,30,.15); color: var(--orange-400); }
+    .update-type-opt  { background: rgba(111,66,193,.15); color: var(--purple-400); }
+    .update-type-notice { background: rgba(239,68,68,.15); color: #F87171; }
+    .update-type-rec  { background: rgba(34,197,94,.12); color: #4ADE80; }
+
+    .update-title {
+      font-family: var(--fh); font-size: .9375rem; font-weight: 700;
+      color: var(--white); margin-bottom: .75rem;
+    }
+    .update-body {
+      font-size: .875rem; color: var(--c400); line-height: 1.7;
+      margin-bottom: 1.25rem;
+    }
+    .update-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--fh); font-size: .7rem; font-weight: 600; color: var(--c600);
+    }
+    .update-meta-from { display: flex; align-items: center; gap: .5rem; }
+    .team-avatar {
+      width: 24px; height: 24px; border-radius: var(--r-pill);
+      background: linear-gradient(135deg, var(--orange-500), var(--purple-500));
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6rem; font-weight: 700; color: var(--white);
+    }
+
+    /* ── Recommendations ── */
+    .rec-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1.5rem;
+      box-shadow: var(--sh-xs);
+    }
+    .rec-list { display: flex; flex-direction: column; gap: 1rem; }
+    .rec-item {
+      display: flex; align-items: flex-start; gap: .875rem;
+      padding: 1rem;
+      background: var(--c100);
+      border-radius: var(--r-lg);
+      border: 1px solid transparent;
+      transition: border-color 200ms, background 200ms;
+    }
+    .rec-item:hover { border-color: var(--c200); background: var(--white); }
+    .rec-icon-box {
+      width: 36px; height: 36px; border-radius: var(--r-md);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 16px;
+    }
+    .rib-orange { background: var(--orange-100); }
+    .rib-purple { background: var(--purple-100); }
+    .rib-green  { background: rgba(34,197,94,.1); }
+    .rec-content {}
+    .rec-type {
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--orange-600); margin-bottom: .25rem;
+    }
+    .rec-type-pur { color: var(--purple-600); }
+    .rec-type-grn { color: #16A34A; }
+    .rec-text { font-size: .8125rem; color: var(--c600); line-height: 1.6; }
+
+    /* ═══════════════════════════════════════════════════════════
+       BOTTOM ROW
+    ═══════════════════════════════════════════════════════════ */
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Activity Timeline ── */
+    .activity-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      padding: 1.5rem;
+      box-shadow: var(--sh-xs);
+    }
+    .activity-list { display: flex; flex-direction: column; gap: 0; }
+    .activity-date-group { margin-bottom: 1rem; }
+    .activity-date-label {
+      font-family: var(--fh); font-size: .65rem; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--c400); margin-bottom: .625rem;
+    }
+    .activity-item {
+      display: flex; align-items: flex-start; gap: .875rem;
+      padding: .625rem 0;
+      border-left: 2px solid var(--c200);
+      padding-left: 1rem; margin-left: .375rem;
+      position: relative;
+    }
+    .activity-item::before {
+      content: '';
+      position: absolute; left: -5px; top: 50%; transform: translateY(-50%);
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--white); border: 2px solid var(--c300);
+    }
+    .activity-item.act-primary::before { border-color: var(--orange-500); background: var(--orange-100); }
+    .activity-item.act-purple::before  { border-color: var(--purple-500); background: var(--purple-100); }
+    .activity-item.act-green::before   { border-color: #22C55E; background: rgba(34,197,94,.1); }
+    .act-content {}
+    .act-title { font-family: var(--fh); font-size: .8125rem; font-weight: 700; color: var(--c900); }
+    .act-sub   { font-size: .75rem; color: var(--c500); margin-top: .125rem; }
+
+    /* ── Campaign Details (expandable) ── */
+    .details-card {
+      background: var(--white);
+      border: 1px solid var(--c200);
+      border-radius: var(--r-xl);
+      overflow: hidden;
+      box-shadow: var(--sh-xs);
+    }
+    .details-toggle {
+      width: 100%; background: none; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+      font-family: var(--fh); font-size: .875rem; font-weight: 700;
+      color: var(--c900);
+      transition: background 150ms;
+    }
+    .details-toggle:hover { background: var(--c100); }
+    .toggle-arrow {
+      color: var(--c400); transition: transform 300ms var(--ease-io);
+    }
+    .details-toggle.open .toggle-arrow { transform: rotate(180deg); }
+    .details-body {
+      display: none;
+      padding: 0 1.5rem 1.5rem;
+      border-top: 1px solid var(--c100);
+    }
+    .details-body.open { display: block; padding-top: 1.25rem; }
+    .details-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .875rem 2rem;
+    }
+    .detail-field {}
+    .df-label { font-family: var(--fh); font-size: .65rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c400); margin-bottom: .25rem; }
+    .df-value { font-family: var(--fh); font-size: .875rem; font-weight: 700; color: var(--c900); }
+    .df-value-muted { color: var(--c500); font-weight: 400; }
+
+    /* ═══════════════════════════════════════════════════════════
+       MOBILE NAV OVERLAY
+    ═══════════════════════════════════════════════════════════ */
+    .mobile-overlay {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      z-index: 90; backdrop-filter: blur(4px);
+    }
+    .mobile-overlay.open { display: block; }
+
+    /* ── Mobile bottom nav ── */
+    .mobile-nav {
+      display: none;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(250,250,248,.96);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--c200);
+      padding: .625rem 1.5rem;
+      z-index: 80;
+      justify-content: space-around;
+    }
+    .mob-nav-item {
+      display: flex; flex-direction: column; align-items: center;
+      gap: .25rem; text-decoration: none;
+      font-family: var(--fh); font-size: .6rem; font-weight: 700;
+      letter-spacing: .04em; color: var(--c500);
+      padding: .5rem .75rem; border-radius: var(--r-md);
+      transition: color 150ms;
+    }
+    .mob-nav-item.active { color: var(--orange-600); }
+    .mob-nav-item svg { transition: transform 150ms var(--spring); }
+    .mob-nav-item:hover svg { transform: scale(1.15); }
+
+    /* ═══════════════════════════════════════════════════════════
+       DEMO DATA BADGE
+    ═══════════════════════════════════════════════════════════ */
+    .demo-notice {
+      background: rgba(111,66,193,.08);
+      border: 1px solid rgba(111,66,193,.2);
+      border-radius: var(--r-md);
+      padding: .625rem 1rem;
+      display: flex; align-items: center; gap: .625rem;
+      margin-bottom: 1.5rem;
+      font-family: var(--fh); font-size: .75rem; font-weight: 600;
+      color: var(--purple-600);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       UTILITY & ANIMATIONS
+    ═══════════════════════════════════════════════════════════ */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 450ms var(--ease-io), transform 450ms var(--ease-io);
+    }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+
+    /* ═══════════════════════════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════════════════════════ */
+    @media (max-width: 1024px) {
+      :root { --sidebar-w: 220px; }
+    }
+    @media (max-width: 860px) {
+      .sidebar { transform: translateX(-100%); transition: transform 300ms var(--ease-io); }
+      .sidebar.mobile-open { transform: translateX(0); }
+      .main-area { margin-left: 0; }
+      .hamburger { display: flex; }
+      .topbar { padding: 0 1.25rem; }
+      .content { padding: 1.25rem; }
+      .two-col { grid-template-columns: 1fr; }
+      .bottom-row { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-grid-sec { grid-template-columns: repeat(2, 1fr); }
+      .campaign-bar { gap: 1rem; }
+      .date-select { width: 100%; justify-content: flex-start; }
+      .mobile-nav { display: flex; }
+      .content { padding-bottom: 5rem; }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .kpi-value { font-size: 1.5rem; }
+      .campaign-bar { flex-direction: column; align-items: flex-start; }
+      .campaign-bar-divider { display: none; }
+      .dash-greeting { font-size: 1.375rem; }
+      .details-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SIDEBAR
+  ═══════════════════════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="../Official_Logo.jpeg" alt="Marketivity" />
+    </div>
+
+    <div class="sidebar-section-label">Navigation</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="#" class="active" id="navDashboard">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+          Dashboard
+        </a>
+      </li>
+      <li>
+        <a href="#" id="navCampaigns">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+          Campaigns
+          <span class="nav-badge">1</span>
+        </a>
+      </li>
+      <li>
+        <a href="#" id="navUpdates">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          Updates
+          <span class="nav-badge">2</span>
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-bottom">
+      <div class="client-identity">
+        <div class="client-avatar">AR</div>
+        <div>
+          <div class="client-name">Ahmed Rahman</div>
+          <div class="client-company">Rahman Retail</div>
+        </div>
+      </div>
+      <a href="login.html" class="logout-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign Out
+      </a>
+    </div>
+  </aside>
+
+  <!-- Mobile overlay -->
+  <div class="mobile-overlay" id="mobileOverlay"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MAIN AREA
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="main-area">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburger" aria-label="Toggle navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="page-title">Campaign Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="sync-pill">
+          <span class="sync-dot"></span>
+          Updated 5 min ago
+        </div>
+        <div class="topbar-avatar">AR</div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="content">
+
+      <!-- Demo notice -->
+      <div class="demo-notice fade-up">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>Development preview — data below is illustrative only. Production will connect to the Meta Marketing API.</span>
+      </div>
+
+      <!-- ── Dashboard header ── -->
+      <div class="dash-header fade-up">
+        <div>
+          <h1 class="dash-greeting">Good evening, Ahmed.</h1>
+          <p class="dash-sub">Here's how your campaign is performing right now.</p>
+          <div class="sync-text" style="margin-top:.5rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+            Last synced 5 minutes ago
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div class="status-live">
+            <span class="live-dot"></span>LIVE
+          </div>
+          <div style="font-family:var(--fh);font-size:.75rem;font-weight:600;color:var(--c500);margin-top:.5rem;">Campaign is currently active</div>
+        </div>
+      </div>
+
+      <!-- ── Campaign selector bar ── -->
+      <div class="campaign-bar fade-up">
+        <div class="selector-group">
+          <div class="selector-label">Campaign</div>
+          <div class="selector-val">Rahman Retail — Messages</div>
+        </div>
+        <div class="campaign-bar-divider"></div>
+        <div class="selector-group">
+          <div class="selector-label">Status</div>
+          <div style="display:inline-flex;align-items:center;gap:.375rem;font-family:var(--fh);font-size:.875rem;font-weight:700;color:#16A34A;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#22C55E;display:inline-block;"></span> Active
+          </div>
+        </div>
+        <div class="campaign-bar-divider"></div>
+        <div class="selector-group">
+          <div class="selector-label">Objective</div>
+          <div class="selector-val">Messaging Conversations</div>
+        </div>
+        <div class="campaign-bar-divider"></div>
+        <div class="selector-group">
+          <div class="selector-label">Platform</div>
+          <div class="platform-icons">
+            <span class="platform-chip">Facebook</span>
+            <span class="platform-chip">Instagram</span>
+          </div>
+        </div>
+        <div class="date-select">
+          <button class="date-btn" data-range="7">7d</button>
+          <button class="date-btn active" data-range="14">14d</button>
+          <button class="date-btn" data-range="30">30d</button>
+        </div>
+      </div>
+
+      <!-- ── Primary KPI cards ── -->
+      <div class="kpi-section fade-up">
+        <div class="section-eyebrow">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Key Performance Metrics
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi-card primary">
+            <div class="kpi-card-accent"></div>
+            <div class="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F7931E" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Total Spend
+            </div>
+            <div class="kpi-value" data-target="4.00" data-prefix="$" data-decimals="2">$0.00</div>
+            <div class="kpi-subtext">of $5.00 daily budget</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-card-accent"></div>
+            <div class="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Reach
+            </div>
+            <div class="kpi-value" data-target="8714" data-prefix="" data-decimals="0">0</div>
+            <div class="kpi-delta delta-up">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+              Unique accounts reached
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-card-accent"></div>
+            <div class="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Impressions
+            </div>
+            <div class="kpi-value" data-target="11216" data-prefix="" data-decimals="0">0</div>
+            <div class="kpi-subtext">Total ad views served</div>
+          </div>
+          <div class="kpi-card green">
+            <div class="kpi-card-accent"></div>
+            <div class="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Results
+            </div>
+            <div class="kpi-value" data-target="18" data-prefix="" data-decimals="0">0</div>
+            <div class="kpi-subtext">Messaging conversations started</div>
+          </div>
+          <div class="kpi-card purple">
+            <div class="kpi-card-accent"></div>
+            <div class="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Cost per Result
+            </div>
+            <div class="kpi-value" data-target="0.22" data-prefix="$" data-decimals="2">$0.00</div>
+            <div class="kpi-subtext">Per messaging conversation</div>
+          </div>
+        </div>
+
+        <!-- Secondary metrics -->
+        <div class="kpi-grid-sec" style="margin-top:1rem;">
+          <div class="kpi-card-sm">
+            <div class="kpi-sm-label">CTR</div>
+            <div class="kpi-sm-value" data-target="0.49" data-prefix="" data-suffix="%" data-decimals="2">0%</div>
+          </div>
+          <div class="kpi-card-sm">
+            <div class="kpi-sm-label">CPC</div>
+            <div class="kpi-sm-value" data-target="0.22" data-prefix="$" data-decimals="2">$0</div>
+          </div>
+          <div class="kpi-card-sm">
+            <div class="kpi-sm-label">CPM</div>
+            <div class="kpi-sm-value" data-target="0.36" data-prefix="$" data-decimals="2">$0</div>
+          </div>
+          <div class="kpi-card-sm">
+            <div class="kpi-sm-label">Frequency</div>
+            <div class="kpi-sm-value" data-target="1.29" data-prefix="" data-decimals="2">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Performance Chart ── -->
+      <div class="chart-card fade-up">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Performance Overview</div>
+            <div class="chart-sub">Campaign trend — last 14 days</div>
+          </div>
+          <div class="chart-tabs">
+            <button class="chart-tab active" data-chart="results">Results</button>
+            <button class="chart-tab" data-chart="spend">Spend</button>
+            <button class="chart-tab" data-chart="cpr">Cost / Result</button>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="perfChart"></canvas>
+        </div>
+        <div class="chart-notice">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Chart shows <span>illustrative development data</span>. Production data will connect to the Meta Marketing API.
+        </div>
+      </div>
+
+      <!-- ── Two column section ── -->
+      <div class="two-col">
+        <!-- LEFT: Campaign status + Details -->
+        <div class="col-left">
+
+          <!-- Campaign Status Card -->
+          <div class="status-card fade-up">
+            <div class="card-title">
+              <span>Campaign Status</span>
+              <div class="card-title-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+            </div>
+            <div class="status-indicator si-live">
+              <span class="si-dot"></span> LIVE — Campaign Active
+            </div>
+            <p class="status-description">Your campaign is currently active and delivering to your target audience on Facebook and Instagram.</p>
+            <div class="status-details">
+              <div class="detail-row"><span class="detail-key">Campaign Name</span><span class="detail-val">Rahman Retail — Messages</span></div>
+              <div class="detail-row"><span class="detail-key">Objective</span><span class="detail-val">Messaging Conversations</span></div>
+              <div class="detail-row"><span class="detail-key">Started</span><span class="detail-val">Sep 1, 2025</span></div>
+              <div class="detail-row"><span class="detail-key">Daily Budget</span><span class="detail-val detail-val-orange">$5.00 / day</span></div>
+              <div class="detail-row"><span class="detail-key">Amount Spent</span><span class="detail-val">$4.00 (demo)</span></div>
+            </div>
+          </div>
+
+          <!-- Expandable Campaign Details -->
+          <div class="details-card fade-up">
+            <button class="details-toggle" id="detailsToggle">
+              <span>Campaign Details</span>
+              <span class="toggle-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </button>
+            <div class="details-body" id="detailsBody">
+              <div class="details-grid">
+                <div class="detail-field"><div class="df-label">Platform</div><div class="df-value">Facebook &amp; Instagram</div></div>
+                <div class="detail-field"><div class="df-label">Ad Placements</div><div class="df-value">Automatic</div></div>
+                <div class="detail-field"><div class="df-label">Audience</div><div class="df-value">Custom — defined</div></div>
+                <div class="detail-field"><div class="df-label">Location</div><div class="df-value">Rajshahi, BD</div></div>
+                <div class="detail-field"><div class="df-label">Age Range</div><div class="df-value">18–55</div></div>
+                <div class="detail-field"><div class="df-label">Gender</div><div class="df-value">All</div></div>
+                <div class="detail-field"><div class="df-label">End Date</div><div class="df-value df-value-muted">Ongoing</div></div>
+                <div class="detail-field"><div class="df-label">Billing Event</div><div class="df-value df-value-muted">Impressions</div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT: Update + Recommendations -->
+        <div class="col-right">
+
+          <!-- Marketivity Update -->
+          <div class="update-card fade-up">
+            <div class="update-inner">
+              <div class="update-type update-type-perf">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                Performance Update
+              </div>
+              <div class="update-title">Campaign is delivering consistently.</div>
+              <div class="update-body">
+                Your campaign is currently generating messaging conversations at a competitive cost. We are actively monitoring audience response and creative performance. Optimization decisions will be made once we have sufficient data from the first phase of delivery.
+              </div>
+              <div class="update-meta">
+                <div class="update-meta-from">
+                  <div class="team-avatar">M</div>
+                  <span>Marketivity Team</span>
+                </div>
+                <span>Sep 12, 2025</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommendations -->
+          <div class="rec-card fade-up">
+            <div class="card-title" style="margin-bottom:1.25rem;">
+              <span>Marketivity Recommendations</span>
+              <div class="card-title-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+            </div>
+            <div class="rec-list">
+              <div class="rec-item">
+                <div class="rec-icon-box rib-orange">💡</div>
+                <div class="rec-content">
+                  <div class="rec-type">Creative Recommendation</div>
+                  <div class="rec-text">Consider preparing an additional creative variation. Testing multiple creatives helps identify which message resonates most with your audience.</div>
+                </div>
+              </div>
+              <div class="rec-item">
+                <div class="rec-icon-box rib-purple">🎯</div>
+                <div class="rec-content">
+                  <div class="rec-type rec-type-pur">Audience Observation</div>
+                  <div class="rec-text">We are monitoring the quality of incoming conversations before recommending any audience expansion. Patience here protects your budget.</div>
+                </div>
+              </div>
+              <div class="rec-item">
+                <div class="rec-icon-box rib-green">📊</div>
+                <div class="rec-content">
+                  <div class="rec-type rec-type-grn">Budget Note</div>
+                  <div class="rec-text">Current performance is being evaluated at the existing budget level before any increase is recommended. We will advise when the data supports scaling.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Bottom row: Activity + Campaign history ── -->
+      <div class="bottom-row">
+
+        <!-- Recent Activity -->
+        <div class="activity-card fade-up">
+          <div class="card-title" style="margin-bottom:1.25rem;">
+            <span>Recent Activity</span>
+            <div class="card-title-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+          </div>
+          <div class="activity-list">
+            <div class="activity-date-group">
+              <div class="activity-date-label">Today — Sep 12</div>
+              <div class="activity-item act-primary">
+                <div class="act-content">
+                  <div class="act-title">Campaign optimization reviewed</div>
+                  <div class="act-sub">Audience delivery and creative performance assessed. No changes required at this stage.</div>
+                </div>
+              </div>
+              <div class="activity-item act-purple">
+                <div class="act-content">
+                  <div class="act-title">Performance update published</div>
+                  <div class="act-sub">Marketivity team posted a campaign status update to your portal.</div>
+                </div>
+              </div>
+            </div>
+            <div class="activity-date-group">
+              <div class="activity-date-label">Yesterday — Sep 11</div>
+              <div class="activity-item">
+                <div class="act-content">
+                  <div class="act-title">Creative performance monitored</div>
+                  <div class="act-sub">Ad creative delivery assessed across placements. Performing within expected range.</div>
+                </div>
+              </div>
+            </div>
+            <div class="activity-date-group">
+              <div class="activity-date-label">Sep 10</div>
+              <div class="activity-item act-green">
+                <div class="act-content">
+                  <div class="act-title">Messaging conversations growing</div>
+                  <div class="act-sub">Campaign passed the learning phase. Delivery becoming more stable.</div>
+                </div>
+              </div>
+            </div>
+            <div class="activity-date-group">
+              <div class="activity-date-label">Sep 1</div>
+              <div class="activity-item act-primary">
+                <div class="act-content">
+                  <div class="act-title">Campaign launched</div>
+                  <div class="act-sub">Rahman Retail — Messages campaign went live on Facebook &amp; Instagram.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Second update / previous communication -->
+        <div class="col-right">
+          <div class="update-card fade-up" style="background:var(--white);border:1px solid var(--c200);box-shadow:var(--sh-xs);">
+            <div class="update-inner">
+              <div class="update-type" style="background:var(--purple-100);color:var(--purple-600);">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Optimization Update
+              </div>
+              <div class="update-title" style="color:var(--c900);">Campaign is in the learning phase.</div>
+              <div class="update-body" style="color:var(--c600);">
+                All new campaigns go through Meta's learning phase — a period where the system finds the best audience for your objective. We expect delivery to stabilise over the coming days. No action is needed from your side.
+              </div>
+              <div class="update-meta" style="color:var(--c400);">
+                <div class="update-meta-from">
+                  <div class="team-avatar">M</div>
+                  <span>Marketivity Team</span>
+                </div>
+                <span>Sep 3, 2025</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="activity-card fade-up" style="flex:1;">
+            <div class="card-title" style="margin-bottom:1rem;">
+              <span>Your Account</span>
+            </div>
+            <div class="detail-row"><span class="detail-key">Client</span><span class="detail-val">Rahman Retail</span></div>
+            <div class="detail-row"><span class="detail-key">Account Manager</span><span class="detail-val">Marketivity Team</span></div>
+            <div class="detail-row"><span class="detail-key">Active Campaigns</span><span class="detail-val detail-val-orange">1</span></div>
+            <div class="detail-row"><span class="detail-key">Portal Access</span><span class="detail-val" style="color:#16A34A;">Active</span></div>
+            <div class="detail-row" style="border-bottom:none;padding-top:.875rem;">
+              <a href="mailto:hello@marketivity.com" style="font-family:var(--fh);font-size:.8125rem;font-weight:700;color:var(--orange-600);text-decoration:none;display:flex;align-items:center;gap:.375rem;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Contact your account team
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MOBILE BOTTOM NAV
+  ═══════════════════════════════════════════════════════════ -->
+  <nav class="mobile-nav">
+    <a href="#" class="mob-nav-item active">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+    <a href="#" class="mob-nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Campaigns
+    </a>
+    <a href="#" class="mob-nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Updates
+    </a>
+    <a href="login.html" class="mob-nav-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign Out
+    </a>
+  </nav>
+
+  <script>
+    /* ════════════════════════════════════════════════════════════
+       SIDEBAR MOBILE TOGGLE
+    ════════════════════════════════════════════════════════════ */
+    const hamburger = document.getElementById('hamburger');
+    const sidebar   = document.getElementById('sidebar');
+    const overlay   = document.getElementById('mobileOverlay');
+
+    function closeSidebar() {
+      sidebar.classList.remove('mobile-open');
+      overlay.classList.remove('open');
+    }
+    hamburger.addEventListener('click', () => {
+      sidebar.classList.toggle('mobile-open');
+      overlay.classList.toggle('open');
+    });
+    overlay.addEventListener('click', closeSidebar);
+
+    /* ════════════════════════════════════════════════════════════
+       EXPANDABLE CAMPAIGN DETAILS
+    ════════════════════════════════════════════════════════════ */
+    const detailsToggle = document.getElementById('detailsToggle');
+    const detailsBody   = document.getElementById('detailsBody');
+    detailsToggle.addEventListener('click', () => {
+      detailsToggle.classList.toggle('open');
+      detailsBody.classList.toggle('open');
+    });
+
+    /* ════════════════════════════════════════════════════════════
+       DATE RANGE SELECTOR
+    ════════════════════════════════════════════════════════════ */
+    document.querySelectorAll('.date-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        // In production: re-fetch data for the selected range
+        updateChartForRange(parseInt(this.dataset.range) || 14);
+      });
+    });
+
+    /* ════════════════════════════════════════════════════════════
+       PERFORMANCE CHART (Chart.js)
+    ════════════════════════════════════════════════════════════ */
+    const ctx = document.getElementById('perfChart').getContext('2d');
+
+    /* Mock data sets — replace with Meta API data in production */
+    const MOCK = {
+      labels14: ['Aug 30','Aug 31','Sep 1','Sep 2','Sep 3','Sep 4','Sep 5','Sep 6','Sep 7','Sep 8','Sep 9','Sep 10','Sep 11','Sep 12'],
+      results:  [0, 0, 1, 0, 2, 1, 0, 2, 2, 3, 2, 3, 1, 1],
+      spend:    [0, 0, 5, 4, 5, 5, 5, 5, 4.5, 5, 5, 5, 4, 4],
+      cpr:      [0, 0, 5.0, 0, 2.5, 5.0, 0, 2.5, 2.25, 1.67, 2.5, 1.67, 4.0, 4.0],
+    };
+
+    const CHART_CONFIGS = {
+      results: { data: MOCK.results, label: 'Messaging Conversations', color: '#22C55E', fill: 'rgba(34,197,94,0.08)', yPrefix: '', ySuffix: '' },
+      spend:   { data: MOCK.spend,   label: 'Daily Spend ($)',        color: '#F7931E', fill: 'rgba(247,147,30,0.08)', yPrefix: '$', ySuffix: '' },
+      cpr:     { data: MOCK.cpr,     label: 'Cost per Result ($)',    color: '#6F42C1', fill: 'rgba(111,66,193,0.08)', yPrefix: '$', ySuffix: '' },
+    };
+
+    let currentChart = null;
+
+    function createChart(type = 'results') {
+      if (currentChart) { currentChart.destroy(); }
+      const cfg = CHART_CONFIGS[type];
+      currentChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: MOCK.labels14,
+          datasets: [{
+            label: cfg.label,
+            data: cfg.data,
+            borderColor: cfg.color,
+            backgroundColor: cfg.fill,
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: cfg.color,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            fill: true,
+            tension: 0.4,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#181818',
+              titleColor: '#FAFAF8',
+              bodyColor: '#9A9A9A',
+              padding: 12,
+              cornerRadius: 8,
+              titleFont: { family: "'Plus Jakarta Sans', sans-serif", weight: '700', size: 13 },
+              bodyFont:  { family: "'DM Sans', sans-serif", size: 12 },
+              callbacks: {
+                label: ctx => ' ' + cfg.yPrefix + ctx.parsed.y.toFixed(2) + cfg.ySuffix
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: '#E5E5E0', drawBorder: false },
+              ticks: {
+                font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: '600' },
+                color: '#9A9A9A',
+                maxTicksLimit: 7,
+              }
+            },
+            y: {
+              grid: { color: '#E5E5E0', drawBorder: false },
+              ticks: {
+                font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: '600' },
+                color: '#9A9A9A',
+                callback: v => cfg.yPrefix + v,
+              },
+              beginAtZero: true,
+            }
+          }
+        }
+      });
+    }
+
+    createChart('results');
+
+    document.querySelectorAll('.chart-tab').forEach(tab => {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        createChart(this.dataset.chart);
+      });
+    });
+
+    function updateChartForRange(days) {
+      /* In production: fetch data for selected date range and recreate chart */
+      /* For demo: just re-render with existing mock data */
+      createChart(document.querySelector('.chart-tab.active').dataset.chart);
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       COUNT-UP ANIMATION
+    ════════════════════════════════════════════════════════════ */
+    function animateCountUp(el) {
+      const target   = parseFloat(el.dataset.target || 0);
+      const prefix   = el.dataset.prefix   || '';
+      const suffix   = el.dataset.suffix   || '';
+      const decimals = parseInt(el.dataset.decimals || 0);
+      const dur      = 1200;
+      const start    = performance.now();
+
+      function step(now) {
+        const pct = Math.min((now - start) / dur, 1);
+        const ease = 1 - Math.pow(1 - pct, 3);
+        const val  = target * ease;
+        el.textContent = prefix + val.toFixed(decimals) + suffix;
+        if (pct < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       INTERSECTION OBSERVER — fade-up + count-up
+    ════════════════════════════════════════════════════════════ */
+    const countersTriggered = new WeakSet();
+
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          /* Trigger count-up for all [data-target] inside this element */
+          entry.target.querySelectorAll('[data-target]').forEach(el => {
+            if (!countersTriggered.has(el)) {
+              countersTriggered.add(el);
+              setTimeout(() => animateCountUp(el), 200);
+            }
+          });
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-up').forEach((el, i) => {
+      el.style.transitionDelay = (i * 60) + 'ms';
+      io.observe(el);
+    });
+
+    /* Trigger count-up for elements already visible on load */
+    document.querySelectorAll('[data-target]').forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && !countersTriggered.has(el)) {
+        countersTriggered.add(el);
+        setTimeout(() => animateCountUp(el), 500);
+      }
+    });
+  </script>
+</body>
+</html>

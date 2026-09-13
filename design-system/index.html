@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marketivity — Design System Foundation v1.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+
+    /* ============================================================
+       MARKETIVITY DESIGN SYSTEM — CSS TOKENS
+       Source of truth: Official_Logo.jpeg
+    ============================================================ */
+
+    :root {
+      /* BRAND COLORS */
+      --orange-500:   #F7931E;
+      --orange-400:   #FAA84B;
+      --orange-600:   #E07910;
+      --orange-100:   #FEF3E6;
+      --purple-500:   #6F42C1;
+      --purple-400:   #9B7DD4;
+      --purple-600:   #5530A8;
+      --purple-100:   #F0EBFB;
+
+      /* NEUTRALS */
+      --char-900: #181818;
+      --char-800: #222222;
+      --char-700: #2E2E2E;
+      --char-600: #3D3D3D;
+      --char-500: #6B6B6B;
+      --char-400: #9A9A9A;
+      --char-300: #C8C8C8;
+      --char-200: #E5E5E0;
+      --char-100: #F2F1EE;
+      --white:    #FAFAF8;
+
+      /* TYPOGRAPHY */
+      --font-head: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-body: 'DM Sans', system-ui, sans-serif;
+
+      /* RADIUS */
+      --r-xs:   2px;
+      --r-sm:   4px;
+      --r-md:   8px;
+      --r-lg:   12px;
+      --r-xl:   20px;
+      --r-2xl:  32px;
+      --r-pill: 999px;
+
+      /* SHADOWS */
+      --sh-xs:  0 1px 2px rgba(0,0,0,.06);
+      --sh-sm:  0 2px 8px rgba(0,0,0,.08);
+      --sh-md:  0 4px 20px rgba(0,0,0,.10);
+      --sh-lg:  0 8px 40px rgba(0,0,0,.12);
+      --sh-xl:  0 16px 64px rgba(0,0,0,.14);
+      --sh-org: 0 8px 32px rgba(247,147,30,.25);
+      --sh-pur: 0 8px 32px rgba(111,66,193,.20);
+
+      /* EASING */
+      --ease:    cubic-bezier(.25,.46,.45,.94);
+      --spring:  cubic-bezier(.34,1.56,.64,1);
+      --ease-io: cubic-bezier(.4,0,.2,1);
+
+      /* LAYOUT */
+      --max:    1280px;
+      --gutter: clamp(1rem,4vw,2rem);
+    }
+
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    html { scroll-behavior:smooth; }
+    body {
+      font-family: var(--font-body);
+      font-size: 1rem;
+      background: var(--white);
+      color: var(--char-900);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ---- Page structure ---- */
+    .page { max-width: var(--max); margin: 0 auto; padding: 4rem var(--gutter); }
+
+    .section { margin-bottom: 6rem; }
+    .section + .section { border-top: 1px solid var(--char-200); padding-top: 6rem; }
+
+    .sec-label {
+      font-family: var(--font-head);
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--orange-500);
+      margin-bottom: .5rem;
+    }
+    .sec-title {
+      font-family: var(--font-head);
+      font-size: clamp(1.5rem,3vw,2rem);
+      font-weight: 800;
+      letter-spacing: -.025em;
+      color: var(--char-900);
+      margin-bottom: .5rem;
+    }
+    .sec-desc {
+      font-size: 1rem;
+      color: var(--char-500);
+      max-width: 60ch;
+      line-height: 1.7;
+      margin-bottom: 2.5rem;
+    }
+
+    .sub-label {
+      font-family: var(--font-head);
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--char-500);
+      margin: 2rem 0 .75rem;
+    }
+
+    /* ---- MASTHEAD ---- */
+    .masthead {
+      background: var(--char-900);
+      padding: 5rem var(--gutter) 5rem;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 5rem;
+    }
+    .masthead::before {
+      content:'';
+      position:absolute;inset:0;
+      background:
+        radial-gradient(ellipse 60% 80% at 100% 0%,rgba(247,147,30,.12) 0%,transparent 60%),
+        radial-gradient(ellipse 50% 70% at 0% 100%,rgba(111,66,193,.12) 0%,transparent 60%);
+      pointer-events:none;
+    }
+    .masthead::after {
+      content:'';
+      position:absolute;top:-80px;right:-80px;
+      width:340px;height:340px;
+      background:linear-gradient(135deg,rgba(247,147,30,.06),rgba(111,66,193,.05));
+      clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+      pointer-events:none;
+    }
+    .masthead-inner { max-width:var(--max); margin:0 auto; position:relative;z-index:1; }
+    .masthead-eyebrow {
+      display:inline-flex;align-items:center;gap:.5rem;
+      font-family:var(--font-head);font-size:.75rem;font-weight:700;
+      letter-spacing:.08em;text-transform:uppercase;color:var(--orange-500);
+      margin-bottom:1.25rem;
+    }
+    .masthead-eyebrow span { width:24px;height:2px;background:var(--orange-500);display:inline-block; }
+    .masthead h1 {
+      font-family:var(--font-head);
+      font-size:clamp(2.5rem,5vw,4.5rem);
+      font-weight:800;letter-spacing:-.035em;line-height:1.1;
+      color:var(--white);margin-bottom:1.5rem;
+    }
+    .masthead h1 em {
+      font-style:normal;
+      background:linear-gradient(90deg,var(--orange-500),var(--orange-400));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .masthead-sub { font-size:1.125rem;color:var(--char-400);max-width:52ch;line-height:1.75; }
+    .masthead-pills { margin-top:2.5rem;display:flex;gap:1rem;flex-wrap:wrap; }
+    .masthead-pill {
+      font-family:var(--font-head);font-size:.8rem;font-weight:600;
+      padding:.375rem 1rem;border-radius:999px;
+      border:1px solid rgba(255,255,255,.1);color:var(--char-300);
+    }
+
+    /* ---- COLOR SWATCHES ---- */
+    .swatch-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem; }
+    .swatch { border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--char-200); }
+    .swatch-block { height:80px; }
+    .swatch-info { padding:.75rem 1rem;background:var(--white); }
+    .swatch-name { font-family:var(--font-head);font-size:.75rem;font-weight:700;color:var(--char-900);display:block; }
+    .swatch-hex  { font-size:.7rem;color:var(--char-500);font-family:monospace;letter-spacing:.02em; }
+    .swatch-role { font-size:.65rem;color:var(--char-400);display:block;margin-top:2px; }
+
+    /* ---- TYPE SPECIMENS ---- */
+    .type-spec { border:1px solid var(--char-200);border-radius:var(--r-lg);overflow:hidden;margin-bottom:1rem; }
+    .type-spec-label {
+      background:var(--char-100);padding:.5rem 1.25rem;
+      font-size:.7rem;font-family:var(--font-head);font-weight:700;
+      color:var(--char-500);letter-spacing:.06em;text-transform:uppercase;
+      border-bottom:1px solid var(--char-200);
+    }
+    .type-spec-sample { padding:1.5rem 2rem;background:var(--white); }
+
+    .t-display { font-family:var(--font-head);font-size:clamp(2.5rem,5vw,5rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;color:var(--char-900); }
+    .t-h1      { font-family:var(--font-head);font-size:clamp(2rem,4vw,4rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;color:var(--char-900); }
+    .t-h2      { font-family:var(--font-head);font-size:clamp(1.5rem,3vw,2.5rem);font-weight:700;letter-spacing:-.015em;line-height:1.3;color:var(--char-900); }
+    .t-h3      { font-family:var(--font-head);font-size:clamp(1.125rem,2vw,1.5rem);font-weight:700;letter-spacing:-.015em;line-height:1.3;color:var(--char-900); }
+    .t-h4      { font-family:var(--font-head);font-size:1.25rem;font-weight:700;line-height:1.3;color:var(--char-900); }
+    .t-body-lg { font-family:var(--font-body);font-size:1.125rem;line-height:1.75;color:var(--char-600); }
+    .t-body    { font-family:var(--font-body);font-size:1rem;line-height:1.6;color:var(--char-600); }
+    .t-caption { font-family:var(--font-body);font-size:.875rem;line-height:1.6;color:var(--char-500); }
+    .t-eyebrow { font-family:var(--font-head);font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--orange-500); }
+    .t-label   { font-family:var(--font-head);font-size:.875rem;font-weight:600;letter-spacing:.04em;color:var(--char-700); }
+
+    /* ---- BUTTONS ---- */
+    .btn-row { display:flex;flex-wrap:wrap;gap:1rem;align-items:center; }
+    .btn {
+      display:inline-flex;align-items:center;gap:.5rem;
+      font-family:var(--font-head);font-weight:700;font-size:.875rem;
+      letter-spacing:.01em;text-decoration:none;cursor:pointer;border:none;outline:none;
+      transition:background 250ms var(--ease-io),transform 150ms var(--spring),box-shadow 250ms var(--ease-io),color 150ms,border-color 150ms;
+      white-space:nowrap;
+    }
+    .btn:active { transform:scale(.97) !important; }
+
+    .btn-arr { display:inline-flex;transition:transform 150ms var(--spring); }
+    .btn:hover .btn-arr { transform:translateX(4px); }
+
+    .btn-primary {
+      background:var(--orange-500);color:var(--white);
+      padding:14px 28px;border-radius:var(--r-md);
+      box-shadow:var(--sh-org);
+    }
+    .btn-primary:hover { background:var(--orange-600);transform:translateY(-2px);box-shadow:0 12px 40px rgba(247,147,30,.35); }
+
+    .btn-secondary {
+      background:var(--purple-500);color:var(--white);
+      padding:14px 28px;border-radius:var(--r-md);
+      box-shadow:var(--sh-pur);
+    }
+    .btn-secondary:hover { background:var(--purple-600);transform:translateY(-2px);box-shadow:0 12px 40px rgba(111,66,193,.30); }
+
+    .btn-ghost {
+      background:transparent;color:var(--char-900);
+      padding:13px 27px;border-radius:var(--r-md);
+      border:1.5px solid var(--char-900);
+    }
+    .btn-ghost:hover { background:var(--char-900);color:var(--white);transform:translateY(-2px); }
+
+    .btn-ghost-light {
+      background:transparent;color:var(--white);
+      padding:13px 27px;border-radius:var(--r-md);
+      border:1.5px solid rgba(255,255,255,.3);
+    }
+    .btn-ghost-light:hover { background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.6);transform:translateY(-2px); }
+
+    .btn-text {
+      background:transparent;color:var(--orange-500);
+      padding:4px 0;font-size:1rem;
+      border-bottom:1.5px solid transparent;
+    }
+    .btn-text:hover { border-bottom-color:var(--orange-500); }
+
+    .btn-pill {
+      background:var(--orange-100);color:var(--orange-600);
+      padding:10px 18px;border-radius:var(--r-pill);
+      font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    }
+    .btn-pill:hover { background:var(--orange-500);color:var(--white);transform:translateY(-1px); }
+
+    /* ---- CARDS ---- */
+    .cards-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:1.5rem; }
+
+    .card-service {
+      background:var(--white);border:1px solid var(--char-200);border-radius:var(--r-xl);
+      padding:2rem;position:relative;overflow:hidden;
+      transition:border-color 250ms var(--ease-io),transform 250ms var(--spring),box-shadow 250ms var(--ease-io);
+    }
+    .card-service::before {
+      content:'';position:absolute;top:0;left:0;right:0;height:3px;
+      background:linear-gradient(90deg,var(--orange-500),var(--purple-500));
+      transform:scaleX(0);transform-origin:left;
+      transition:transform 400ms var(--ease-io);border-radius:var(--r-xl) var(--r-xl) 0 0;
+    }
+    .card-service:hover { border-color:var(--char-300);transform:translateY(-4px);box-shadow:var(--sh-lg); }
+    .card-service:hover::before { transform:scaleX(1); }
+    .card-service-icon {
+      width:48px;height:48px;border-radius:var(--r-lg);
+      display:flex;align-items:center;justify-content:center;
+      margin-bottom:1.25rem;font-size:22px;
+    }
+    .ic-org { background:var(--orange-100); }
+    .ic-pur { background:var(--purple-100); }
+    .card-service h4 { font-family:var(--font-head);font-size:1.125rem;font-weight:700;color:var(--char-900);margin-bottom:.75rem; }
+    .card-service p  { font-size:.9rem;color:var(--char-500);line-height:1.75; }
+
+    .card-stat {
+      background:var(--char-800);border:1px solid rgba(255,255,255,.07);
+      border-radius:var(--r-xl);padding:2rem;color:var(--white);
+      position:relative;overflow:hidden;
+    }
+    .card-stat::after {
+      content:'';position:absolute;bottom:-30px;right:-30px;
+      width:100px;height:100px;border:1px solid rgba(255,255,255,.05);
+      border-radius:var(--r-xl);transform:rotate(20deg);
+    }
+    .stat-num {
+      font-family:var(--font-head);font-size:clamp(2rem,4vw,3rem);font-weight:800;
+      letter-spacing:-.03em;line-height:1;margin-bottom:.5rem;
+      background:linear-gradient(135deg,var(--orange-500),var(--orange-400));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .stat-num-pur {
+      background:linear-gradient(135deg,var(--purple-400),var(--purple-500));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .stat-label { font-size:.875rem;color:var(--char-400);line-height:1.7; }
+
+    .card-quote {
+      background:var(--white);border:1px solid var(--char-200);border-radius:var(--r-xl);padding:2rem;
+    }
+    .quote-mark { font-size:3rem;color:var(--orange-500);line-height:1;opacity:.5;margin-bottom:.75rem; }
+    .quote-body { font-size:1.0625rem;color:var(--char-700);line-height:1.75;font-style:italic;margin-bottom:1.5rem; }
+    .quote-author { display:flex;align-items:center;gap:.75rem; }
+    .quote-avatar {
+      width:40px;height:40px;border-radius:999px;flex-shrink:0;
+      background:linear-gradient(135deg,var(--orange-400),var(--purple-400));
+      display:flex;align-items:center;justify-content:center;
+      font-family:var(--font-head);font-weight:700;font-size:.875rem;color:var(--white);
+    }
+    .quote-name { font-family:var(--font-head);font-weight:700;font-size:.875rem;color:var(--char-900); }
+    .quote-role { font-size:.75rem;color:var(--char-500); }
+
+    /* ---- SECTION BG DEMOS ---- */
+    .bg-demo {
+      border-radius:var(--r-xl);padding:3rem;margin-bottom:1rem;position:relative;overflow:hidden;
+    }
+    .bg-tag {
+      display:inline-block;font-family:var(--font-head);font-size:.7rem;font-weight:700;
+      letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;
+      border-radius:999px;margin-bottom:.75rem;
+    }
+    .bg-tag-light { background:var(--char-100);color:var(--char-600); }
+    .bg-tag-dark  { background:rgba(255,255,255,.1);color:var(--char-300); }
+
+    /* ---- GRID DEMO ---- */
+    .grid-12 { display:grid;grid-template-columns:repeat(12,1fr);gap:1.5rem;margin-bottom:1.5rem; }
+    .grid-col {
+      height:44px;background:rgba(247,147,30,.1);border-radius:var(--r-sm);
+      border:1px dashed rgba(247,147,30,.35);
+      display:flex;align-items:center;justify-content:center;
+      font-size:.65rem;font-family:var(--font-head);font-weight:700;color:var(--orange-600);
+    }
+    .split-row { display:flex;gap:1.5rem; }
+    .split-5 { flex:5; }
+    .split-7 { flex:7; }
+    .split-4 { flex:4; }
+    .split-block {
+      border-radius:var(--r-md);padding:1.5rem;
+    }
+    .split-block-pur { background:rgba(111,66,193,.07);border:1px dashed rgba(111,66,193,.25); }
+    .split-block-org { background:rgba(247,147,30,.06);border:1px dashed rgba(247,147,30,.25); }
+
+    /* ---- RADIUS ---- */
+    .radius-row { display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center; }
+    .radius-box {
+      background:var(--char-100);border:1px solid var(--char-200);
+      width:80px;height:80px;display:flex;align-items:center;justify-content:center;
+      font-family:var(--font-head);font-size:.65rem;font-weight:700;color:var(--char-500);
+      text-align:center;line-height:1.4;
+    }
+
+    /* ---- SHADOWS ---- */
+    .shadow-row { display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1.5rem; }
+    .shadow-box {
+      background:var(--white);border-radius:var(--r-lg);height:80px;
+      display:flex;align-items:center;justify-content:center;
+      font-family:var(--font-head);font-size:.7rem;font-weight:700;
+      color:var(--char-500);text-transform:uppercase;letter-spacing:.06em;
+    }
+
+    /* ---- GEO LANGUAGE ---- */
+    .geo-row { display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-end; }
+    .geo-item { display:flex;flex-direction:column;align-items:center;gap:.75rem; }
+    .geo-cap { font-size:.65rem;font-family:var(--font-head);font-weight:700;color:var(--char-400);text-transform:uppercase;letter-spacing:.06em;text-align:center; }
+
+    .tri-org { width:0;height:0;border-left:28px solid transparent;border-right:28px solid transparent;border-bottom:48px solid var(--orange-500); }
+    .tri-pur { width:0;height:0;border-left:28px solid transparent;border-right:28px solid transparent;border-bottom:48px solid var(--purple-500); }
+    .diamond { width:44px;height:44px;background:var(--orange-500);transform:rotate(45deg);border-radius:4px; }
+    .brand-line { width:3px;height:64px;background:linear-gradient(180deg,var(--orange-500),var(--purple-500));border-radius:999px; }
+    .dot-grid { display:grid;grid-template-columns:repeat(3,10px);gap:6px; }
+    .dot { width:10px;height:10px;border-radius:50%;background:var(--char-300); }
+    .dot-acc { background:var(--orange-500); }
+    .corner-mark { width:44px;height:44px;border-top:3px solid var(--orange-500);border-left:3px solid var(--orange-500);border-radius:var(--r-sm) 0 0 0; }
+    .bar-cluster { display:flex;gap:6px;align-items:flex-end; }
+
+    .divider-plain { height:1px;background:var(--char-200);margin:2.5rem 0; }
+    .divider-brand { height:2px;background:linear-gradient(90deg,var(--orange-500),var(--purple-500),transparent);margin:2.5rem 0;border-radius:999px; }
+
+    /* ---- BADGES ---- */
+    .badge-row { display:flex;flex-wrap:wrap;gap:.75rem; }
+    .badge {
+      display:inline-flex;align-items:center;
+      font-family:var(--font-head);font-size:.7rem;font-weight:700;
+      padding:4px 12px;border-radius:999px;
+    }
+    .badge-org    { background:var(--orange-100);color:var(--orange-600); }
+    .badge-pur    { background:var(--purple-100);color:var(--purple-600); }
+    .badge-dark   { background:var(--char-800);color:var(--char-300); }
+    .badge-outline{ background:transparent;border:1px solid var(--char-200);color:var(--char-600); }
+    .badge-neu    { background:var(--char-100);color:var(--char-600); }
+
+    /* ---- ICONS ---- */
+    .icon-row { display:flex;flex-wrap:wrap;gap:1rem;align-items:center; }
+    .icon-item { display:flex;flex-direction:column;align-items:center;gap:.5rem; }
+    .icon-box {
+      width:44px;height:44px;border-radius:var(--r-md);
+      display:flex;align-items:center;justify-content:center;
+      transition:transform 150ms var(--spring);cursor:pointer;
+    }
+    .icon-box:hover { transform:scale(1.1) rotate(-5deg); }
+    .ib-org { background:var(--orange-100); }
+    .ib-pur { background:var(--purple-100); }
+    .ib-drk { background:var(--char-800); }
+    .icon-cap { font-size:.6rem;font-family:var(--font-head);font-weight:700;color:var(--char-500);text-transform:uppercase;letter-spacing:.06em; }
+
+    /* ---- INPUTS ---- */
+    .form-group { margin-bottom:1rem; }
+    .form-label { display:block;font-family:var(--font-head);font-size:.875rem;font-weight:600;color:var(--char-900);margin-bottom:.5rem; }
+    .form-input {
+      width:100%;padding:12px 16px;
+      font-family:var(--font-body);font-size:1rem;color:var(--char-900);
+      background:var(--white);border:1.5px solid var(--char-200);border-radius:var(--r-md);
+      outline:none;transition:border-color 150ms var(--ease-io),box-shadow 150ms var(--ease-io);
+    }
+    .form-input:focus { border-color:var(--orange-500);box-shadow:0 0 0 3px rgba(247,147,30,.15); }
+    .form-input::placeholder { color:var(--char-400); }
+
+    /* ---- MOTION CARDS ---- */
+    .motion-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1rem; }
+    .motion-card {
+      border:1px solid var(--char-200);border-radius:var(--r-lg);
+      padding:1.5rem;text-align:center;cursor:pointer;
+    }
+    .motion-ball {
+      width:40px;height:40px;border-radius:999px;background:var(--orange-500);
+      margin:0 auto .75rem;transition:transform 400ms var(--spring);
+    }
+    .motion-card:hover .motion-ball { transform:scale(1.25) rotate(12deg); }
+    .motion-bar {
+      width:0;height:4px;border-radius:999px;margin:.75rem auto 0;
+      background:linear-gradient(90deg,var(--orange-500),var(--purple-500));
+      transition:width 400ms var(--ease-io);
+    }
+    .motion-card:hover .motion-bar { width:100%; }
+    .motion-title { font-family:var(--font-head);font-size:.7rem;font-weight:700;color:var(--char-700);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem; }
+    .motion-detail { font-size:.7rem;color:var(--char-500); }
+
+    /* ---- NAVBAR PREVIEWS ---- */
+    .navbar {
+      display:flex;align-items:center;justify-content:space-between;
+      height:68px;padding:0 2rem;border-radius:var(--r-lg);
+      margin-bottom:1rem;
+    }
+    .navbar-light { background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border:1px solid var(--char-200);box-shadow:var(--sh-sm); }
+    .navbar-dark  { background:rgba(24,24,24,.96);border:1px solid rgba(255,255,255,.06); }
+    .nav-logo { display:flex;align-items:center;gap:.75rem; }
+    .nav-logo-text { font-family:var(--font-head);font-weight:800;font-size:1.125rem;letter-spacing:-.015em; }
+    .nav-logo-text-dark { color:var(--char-900); }
+    .nav-logo-text-light { color:var(--white); }
+    .nav-links { display:flex;align-items:center;gap:2rem;list-style:none; }
+    .nav-links a { font-family:var(--font-head);font-size:.875rem;font-weight:600;text-decoration:none;transition:color 150ms; }
+    .nav-links-dark  a { color:var(--char-600); }
+    .nav-links-dark  a:hover { color:var(--orange-500); }
+    .nav-links-light a { color:var(--char-400); }
+    .nav-links-light a:hover { color:var(--orange-400); }
+
+    /* ---- HERO PREVIEW ---- */
+    .hero-comp {
+      background:var(--char-900);border-radius:var(--r-xl);
+      padding:4rem;position:relative;overflow:hidden;
+      display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center;
+      min-height:440px;
+    }
+    .hero-comp::before {
+      content:'';position:absolute;inset:0;
+      background:
+        radial-gradient(ellipse 70% 90% at 80% 20%,rgba(247,147,30,.08),transparent 60%),
+        radial-gradient(ellipse 50% 60% at 10% 90%,rgba(111,66,193,.10),transparent 60%);
+      pointer-events:none;
+    }
+    .hero-geo {
+      position:absolute;top:-60px;right:-40px;
+      width:280px;height:280px;opacity:.04;
+      border:36px solid var(--white);border-radius:var(--r-xl);transform:rotate(18deg);
+    }
+    .hero-content { position:relative;z-index:1; }
+    .hero-ew {
+      display:inline-flex;align-items:center;gap:.5rem;
+      font-family:var(--font-head);font-size:.7rem;font-weight:700;
+      letter-spacing:.08em;text-transform:uppercase;color:var(--orange-500);margin-bottom:1.25rem;
+    }
+    .hero-ew-line { width:20px;height:2px;background:var(--orange-500); }
+    .hero-h {
+      font-family:var(--font-head);font-size:clamp(1.75rem,3.5vw,2.875rem);font-weight:800;
+      letter-spacing:-.03em;line-height:1.12;color:var(--white);margin-bottom:1.25rem;
+    }
+    .hero-h-acc { color:var(--orange-500); }
+    .hero-body { font-size:1.0625rem;color:var(--char-400);line-height:1.75;margin-bottom:2rem;max-width:42ch; }
+    .hero-acts { display:flex;gap:1rem;flex-wrap:wrap;align-items:center; }
+    .hero-vis { position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:1rem; }
+    .hero-stat-card {
+      background:rgba(255,255,255,.05);backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,.08);border-radius:var(--r-lg);padding:1.5rem;
+    }
+    .hs-num {
+      font-family:var(--font-head);font-size:2.25rem;font-weight:800;
+      letter-spacing:-.03em;line-height:1;margin-bottom:.5rem;color:var(--orange-500);
+    }
+    .hs-num-pur { color:var(--purple-400); }
+    .hs-desc { font-size:.75rem;color:var(--char-400); }
+
+    /* ---- CTA PREVIEW ---- */
+    .cta-comp {
+      background:var(--char-900);border-radius:var(--r-xl);
+      padding:4rem;text-align:center;position:relative;overflow:hidden;
+    }
+    .cta-comp::before {
+      content:'';position:absolute;inset:0;
+      background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(247,147,30,.07),transparent 70%);
+      pointer-events:none;
+    }
+    .cta-inner { position:relative;z-index:1; }
+    .cta-ew { font-family:var(--font-head);font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--orange-500);margin-bottom:1.25rem; }
+    .cta-h {
+      font-family:var(--font-head);font-size:clamp(1.75rem,3.5vw,2.5rem);font-weight:800;
+      letter-spacing:-.025em;color:var(--white);line-height:1.15;margin-bottom:1.25rem;
+    }
+    .cta-body { font-size:1.0625rem;color:var(--char-400);max-width:46ch;margin:0 auto 2.5rem;line-height:1.75; }
+    .cta-acts { display:flex;gap:1rem;justify-content:center;flex-wrap:wrap; }
+
+    /* ---- PAGE RHYTHM ---- */
+    .rhythm-list { display:flex;flex-direction:column;gap:.75rem;max-width:600px; }
+    .rhythm-row { display:flex;align-items:center;gap:1.5rem; }
+    .rhythm-chip {
+      width:150px;flex-shrink:0;border-radius:var(--r-md);padding:.875rem 1rem;text-align:center;
+    }
+    .rhythm-chip-label { font-family:var(--font-head);font-size:.65rem;font-weight:700;letter-spacing:.06em; }
+    .rhythm-chip-sub   { font-size:.6rem;margin-top:2px; }
+    .rhythm-desc { font-size:.875rem;color:var(--char-600); }
+
+    /* ---- FOOTER ---- */
+    .ds-footer {
+      background:var(--char-900);border-radius:var(--r-xl);
+      padding:2.5rem 3rem;display:flex;
+      justify-content:space-between;align-items:center;
+      margin-top:6rem;flex-wrap:wrap;gap:1rem;
+    }
+    .ds-footer-brand { font-family:var(--font-head);font-size:.875rem;color:var(--char-400); }
+    .ds-footer-brand strong { color:var(--white);font-weight:700; }
+    .dot-live { display:flex;align-items:center;gap:.75rem; }
+    .dot-pulse {
+      width:8px;height:8px;border-radius:999px;background:var(--orange-500);
+      animation:pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { opacity:1;transform:scale(1); }
+      50%      { opacity:.5;transform:scale(.8); }
+    }
+    .dot-text { font-family:var(--font-head);font-size:.75rem;font-weight:600;color:var(--char-400); }
+
+    /* ---- UTILS ---- */
+    .row { display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start; }
+    .col { flex:1;min-width:200px; }
+    .info-block { background:var(--char-100);border-radius:var(--r-md);padding:1.5rem; }
+    .info-block-title { font-family:var(--font-head);font-size:.875rem;font-weight:700;color:var(--char-900);margin-bottom:.75rem; }
+    .info-block p { font-size:.875rem;color:var(--char-600);line-height:1.75; }
+
+    @media(max-width:768px) {
+      .hero-comp { grid-template-columns:1fr; }
+      .hero-vis { display:none; }
+      .grid-12 { grid-template-columns:repeat(6,1fr); }
+      .split-row { flex-direction:column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================
+     MASTHEAD
+================================================================ -->
+<div class="masthead">
+  <div class="masthead-inner">
+    <div class="masthead-eyebrow"><span></span>Marketivity Design System</div>
+    <h1>Visual Foundation<br/><em>Design System v1.0</em></h1>
+    <p class="masthead-sub">A complete brand-led design system derived from the official Marketivity logo — every color, typeface, component, and spacing token traces back to the brand's visual identity.</p>
+    <div class="masthead-pills">
+      <span class="masthead-pill">Brand: Digital Growth Partners</span>
+      <span class="masthead-pill">Fonts: Plus Jakarta Sans &bull; DM Sans</span>
+      <span class="masthead-pill">Primary: #F7931E &bull; #6F42C1</span>
+      <span class="masthead-pill">Phase 1 of 3</span>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- ================================================================
+     01 LOGO
+================================================================ -->
+<section class="section">
+  <div class="sec-label">01 &mdash; Logo Reference</div>
+  <div class="sec-title">Official Brand Mark</div>
+  <p class="sec-desc">The official Marketivity logo is the source of truth. It remains unchanged — used as-is across all contexts.</p>
+
+  <div class="row">
+    <!-- Light bg -->
+    <div class="col" style="background:var(--white);border:1px solid var(--char-200);border-radius:var(--r-xl);padding:3rem;display:flex;align-items:center;justify-content:center;">
+      <img src="../Official_Logo.jpeg" alt="Marketivity logo — light bg" style="height:100px;object-fit:contain;" />
+    </div>
+    <!-- Dark bg -->
+    <div class="col" style="background:var(--char-900);border-radius:var(--r-xl);padding:3rem;display:flex;align-items:center;justify-content:center;">
+      <img src="../Official_Logo.jpeg" alt="Marketivity logo — dark bg" style="height:100px;object-fit:contain;filter:brightness(1.05);" />
+    </div>
+    <!-- Small usage -->
+    <div class="col" style="background:var(--char-100);border-radius:var(--r-xl);padding:2rem;display:flex;flex-direction:column;align-items:center;gap:1.5rem;">
+      <img src="../Official_Logo.jpeg" alt="Marketivity logo — small" style="height:40px;object-fit:contain;" />
+      <span style="font-size:.75rem;color:var(--char-500);font-family:var(--font-head);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Navbar scale</span>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem;background:var(--char-100);border-radius:var(--r-lg);padding:1.25rem 1.5rem;">
+    <div style="font-family:var(--font-head);font-size:.75rem;font-weight:700;color:var(--char-600);margin-bottom:.5rem;">Logo Usage Rules</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.5rem;font-size:.8rem;color:var(--char-600);">
+      <span>&#10003; Use on warm white (#FAFAF8)</span>
+      <span>&#10003; Use on dark charcoal (#181818, #222222)</span>
+      <span>&#10003; Minimum clear space: 50% of logo height</span>
+      <span>&#10007; Do not recolor or alter</span>
+      <span>&#10007; Do not add shadows or glow effects</span>
+      <span>&#10007; Do not stretch or distort</span>
+      <span>&#10007; Do not place inside a shape or box</span>
+      <span>&#10007; Do not use on busy backgrounds</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     02 COLOR SYSTEM
+================================================================ -->
+<section class="section">
+  <div class="sec-label">02 &mdash; Color System</div>
+  <div class="sec-title">Brand Color Palette</div>
+  <p class="sec-desc">All colors extracted from the official logo. Orange and Purple are strategic accents — not background fillers. The neutral charcoal scale carries the structural weight of the UI.</p>
+
+  <div class="sub-label">Primary Brand Accents — from logo</div>
+  <div class="swatch-grid" style="margin-bottom:2rem">
+    <div class="swatch"><div class="swatch-block" style="background:#F7931E"></div><div class="swatch-info"><span class="swatch-name">Orange 500</span><span class="swatch-hex">#F7931E</span><span class="swatch-role">Primary CTA &bull; Highlights &bull; Energy</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#FAA84B"></div><div class="swatch-info"><span class="swatch-name">Orange 400</span><span class="swatch-hex">#FAA84B</span><span class="swatch-role">Gradient light &bull; Logo facet</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#E07910"></div><div class="swatch-info"><span class="swatch-name">Orange 600</span><span class="swatch-hex">#E07910</span><span class="swatch-role">Hover &bull; Active states</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#FEF3E6"></div><div class="swatch-info"><span class="swatch-name">Orange 100</span><span class="swatch-hex">#FEF3E6</span><span class="swatch-role">Icon bg &bull; Subtle tints</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#6F42C1"></div><div class="swatch-info"><span class="swatch-name">Purple 500</span><span class="swatch-hex">#6F42C1</span><span class="swatch-role">Secondary CTA &bull; Creative moments</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#9B7DD4"></div><div class="swatch-info"><span class="swatch-name">Purple 400</span><span class="swatch-hex">#9B7DD4</span><span class="swatch-role">Gradient light &bull; Logo facet</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#5530A8"></div><div class="swatch-info"><span class="swatch-name">Purple 600</span><span class="swatch-hex">#5530A8</span><span class="swatch-role">Hover &bull; Deep accent</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#F0EBFB"></div><div class="swatch-info"><span class="swatch-name">Purple 100</span><span class="swatch-hex">#F0EBFB</span><span class="swatch-role">Icon bg &bull; Subtle tints</span></div></div>
+  </div>
+
+  <div class="sub-label">Neutral Charcoal Scale</div>
+  <div class="swatch-grid">
+    <div class="swatch"><div class="swatch-block" style="background:#181818"></div><div class="swatch-info"><span class="swatch-name">Charcoal 900</span><span class="swatch-hex">#181818</span><span class="swatch-role">Near-black &bull; Authority</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#222222"></div><div class="swatch-info"><span class="swatch-name">Charcoal 800</span><span class="swatch-hex">#222222</span><span class="swatch-role">Dark sections</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#3D3D3D"></div><div class="swatch-info"><span class="swatch-name">Charcoal 600</span><span class="swatch-hex">#3D3D3D</span><span class="swatch-role">Secondary dark</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#6B6B6B"></div><div class="swatch-info"><span class="swatch-name">Charcoal 500</span><span class="swatch-hex">#6B6B6B</span><span class="swatch-role">Muted / secondary text</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#9A9A9A"></div><div class="swatch-info"><span class="swatch-name">Charcoal 400</span><span class="swatch-hex">#9A9A9A</span><span class="swatch-role">Placeholder / subtle</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#E5E5E0"></div><div class="swatch-info"><span class="swatch-name">Charcoal 200</span><span class="swatch-hex">#E5E5E0</span><span class="swatch-role">Borders &bull; Dividers</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#F2F1EE"></div><div class="swatch-info"><span class="swatch-name">Charcoal 100</span><span class="swatch-hex">#F2F1EE</span><span class="swatch-role">Off-white &bull; Alt backgrounds</span></div></div>
+    <div class="swatch"><div class="swatch-block" style="background:#FAFAF8;border:1px solid #E5E5E0"></div><div class="swatch-info"><span class="swatch-name">Warm White</span><span class="swatch-hex">#FAFAF8</span><span class="swatch-role">Primary background</span></div></div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     03 TYPOGRAPHY
+================================================================ -->
+<section class="section">
+  <div class="sec-label">03 &mdash; Typography System</div>
+  <div class="sec-title">Type Scale &amp; Hierarchy</div>
+  <p class="sec-desc"><strong>Plus Jakarta Sans</strong> for all headings and UI labels — geometric, confident, premium weight. <strong>DM Sans</strong> for body copy — clean, readable, human. Both pair naturally with the logo's rounded-geometric wordmark.</p>
+
+  <div class="type-spec"><div class="type-spec-label">Display &mdash; Plus Jakarta Sans 800 &bull; &minus;3% tracking &bull; 1.1 leading &bull; clamp(2.5rem&rarr;5rem)</div><div class="type-spec-sample"><div class="t-display">Grow Beyond<br/>The Expected.</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">H1 &mdash; Plus Jakarta Sans 800 &bull; &minus;3% tracking &bull; 1.15 leading &bull; clamp(2rem&rarr;4rem)</div><div class="type-spec-sample"><div class="t-h1">Digital Growth Partners<br/>Who Deliver Results.</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">H2 &mdash; Plus Jakarta Sans 700 &bull; &minus;1.5% tracking &bull; 1.3 leading &bull; clamp(1.5rem&rarr;2.5rem)</div><div class="type-spec-sample"><div class="t-h2">Services Built for Business Growth</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">H3 &mdash; Plus Jakarta Sans 700 &bull; &minus;1.5% tracking &bull; 1.3 leading &bull; clamp(1.125rem&rarr;1.5rem)</div><div class="type-spec-sample"><div class="t-h3">Performance Marketing &amp; Strategy</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">H4 &mdash; Plus Jakarta Sans 700 &bull; 0 tracking &bull; 1.3 leading &bull; 1.25rem</div><div class="type-spec-sample"><div class="t-h4">Search Engine Optimisation</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">Body Large &mdash; DM Sans 400 &bull; 1.125rem &bull; 1.75 leading</div><div class="type-spec-sample"><div class="t-body-lg">We partner with ambitious businesses to design and execute digital marketing strategies that drive measurable revenue growth. From paid media to organic presence — we are the team behind your results.</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">Body &mdash; DM Sans 400 &bull; 1rem &bull; 1.6 leading</div><div class="type-spec-sample"><div class="t-body">Our integrated approach combines data-driven performance marketing with bold creative strategy. Every campaign we run is accountable to a number — and every number is accountable to your growth.</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">Eyebrow Label &mdash; Plus Jakarta Sans 700 &bull; 8% tracking &bull; UPPERCASE &bull; Orange 500</div><div class="type-spec-sample"><div class="t-eyebrow">Our Services</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">UI Label &mdash; Plus Jakarta Sans 600 &bull; 4% tracking &bull; 0.875rem</div><div class="type-spec-sample"><div class="t-label">Case Studies &middot; About Us &middot; Contact</div></div></div>
+  <div class="type-spec"><div class="type-spec-label">Caption &mdash; DM Sans 400 &bull; 0.875rem &bull; Muted charcoal 500</div><div class="type-spec-sample"><div class="t-caption">Results are indicative. Campaign performance varies based on market conditions, budget, and execution quality.</div></div></div>
+</section>
+
+
+<!-- ================================================================
+     04 BUTTONS
+================================================================ -->
+<section class="section">
+  <div class="sec-label">04 &mdash; Button System</div>
+  <div class="sec-title">Interaction Components</div>
+  <p class="sec-desc">All buttons use Plus Jakarta Sans 700. Orange = primary CTA, Purple = secondary, Ghost = low-emphasis. Hover states include micro-lift + shadow elevation. <strong>Hover each button to preview interactions.</strong></p>
+
+  <div class="sub-label">On light backgrounds</div>
+  <div class="btn-row" style="margin-bottom:2rem">
+    <button class="btn btn-primary">Get Started <svg class="btn-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+    <button class="btn btn-secondary">View Our Work <svg class="btn-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+    <button class="btn btn-ghost">Our Approach</button>
+    <button class="btn btn-pill">&#x2197; Case Study</button>
+    <button class="btn btn-text">Learn more <svg class="btn-arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+  </div>
+
+  <div class="sub-label">On dark backgrounds</div>
+  <div style="background:var(--char-900);padding:2rem;border-radius:var(--r-lg);">
+    <div class="btn-row">
+      <button class="btn btn-primary">Book a Call <svg class="btn-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+      <button class="btn btn-ghost-light">See Results</button>
+      <button class="btn btn-secondary">Our Services</button>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     05 CARD SYSTEM
+================================================================ -->
+<section class="section">
+  <div class="sec-label">05 &mdash; Card System</div>
+  <div class="sec-title">Content Cards</div>
+  <p class="sec-desc">Cards use strong hierarchy. Light cards have subtle border and shadow. Dark stat cards use the charcoal palette with gradient numbers. <strong>Hover service cards to reveal the brand gradient top accent.</strong></p>
+
+  <div class="sub-label">Service Cards &mdash; Light variant (hover me)</div>
+  <div class="cards-grid" style="margin-bottom:2.5rem">
+    <div class="card-service">
+      <div class="card-service-icon ic-org">&#128200;</div>
+      <h4>Performance Marketing</h4>
+      <p>Data-driven paid campaigns across Google, Meta and programmatic channels. Every dollar optimised for measurable ROI.</p>
+      <div style="margin-top:1.25rem"><button class="btn btn-text" style="font-size:.875rem">Explore service <svg class="btn-arr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
+    </div>
+    <div class="card-service">
+      <div class="card-service-icon ic-pur">&#127919;</div>
+      <h4>Brand Strategy</h4>
+      <p>Positioning, messaging and identity systems that differentiate you and build lasting brand equity in your market.</p>
+      <div style="margin-top:1.25rem"><button class="btn btn-text" style="font-size:.875rem">Explore service <svg class="btn-arr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
+    </div>
+    <div class="card-service">
+      <div class="card-service-icon ic-org">&#128269;</div>
+      <h4>SEO &amp; Content</h4>
+      <p>Long-term organic growth that compounds — from technical foundations to editorial content at scale, month after month.</p>
+      <div style="margin-top:1.25rem"><button class="btn btn-text" style="font-size:.875rem">Explore service <svg class="btn-arr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
+    </div>
+  </div>
+
+  <div class="sub-label">Stat Cards &mdash; Dark variant</div>
+  <div class="cards-grid" style="margin-bottom:2.5rem">
+    <div class="card-stat"><div class="stat-num">340%</div><div class="stat-label">Average ROI delivered across performance campaigns in 2024</div></div>
+    <div class="card-stat"><div class="stat-num stat-num-pur">98%</div><div class="stat-label">Client retention rate — our relationships outlast campaign cycles</div></div>
+    <div class="card-stat"><div class="stat-num">&#163;40M+</div><div class="stat-label">In ad spend managed profitably across search, social and display</div></div>
+  </div>
+
+  <div class="sub-label">Testimonial Card</div>
+  <div style="max-width:520px">
+    <div class="card-quote">
+      <div class="quote-mark">&ldquo;</div>
+      <div class="quote-body">Marketivity transformed our digital presence. Within 6 months, our qualified lead volume tripled — and the quality of those leads was leagues ahead of what we had before.</div>
+      <div class="quote-author">
+        <div class="quote-avatar">SJ</div>
+        <div><div class="quote-name">Sarah Johnson</div><div class="quote-role">CMO, Vertex Technologies</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     06 SECTION STRATEGY
+================================================================ -->
+<section class="section">
+  <div class="sec-label">06 &mdash; Section Strategy</div>
+  <div class="sec-title">Background Rhythm &amp; Section Spacing</div>
+  <p class="sec-desc">The website alternates between light, off-white, and dark sections to create visual rhythm. No two consecutive sections feel identical in visual weight.</p>
+
+  <div class="bg-demo" style="background:var(--white);border:1px solid var(--char-200)">
+    <span class="bg-tag bg-tag-light">Light &mdash; Warm White #FAFAF8</span>
+    <div class="t-h3" style="margin-top:.75rem">Primary content area. Premium, spacious, breathing room.</div>
+    <p class="t-body" style="margin-top:.75rem;max-width:50ch;">Used for: Hero (light variant), About, Case studies, Blog, Team.</p>
+  </div>
+  <div class="bg-demo" style="background:var(--char-100)">
+    <span class="bg-tag bg-tag-light">Alt &mdash; Off-White #F2F1EE</span>
+    <div class="t-h3" style="margin-top:.75rem">Subtle variation without heavy contrast.</div>
+    <p class="t-body" style="margin-top:.75rem;max-width:50ch;">Used for: Service grids, feature lists, process steps, FAQ sections.</p>
+  </div>
+  <div class="bg-demo" style="background:var(--char-900)">
+    <span class="bg-tag bg-tag-dark">Dark &mdash; Near Black #181818</span>
+    <div style="font-family:var(--font-head);font-size:clamp(1.125rem,2vw,1.5rem);font-weight:700;line-height:1.3;color:var(--white);margin-top:.75rem">High-impact sections. Authority and confidence.</div>
+    <p style="margin-top:.75rem;max-width:50ch;color:var(--char-400);font-size:1rem">Used for: Hero (dark), CTA sections, stats, bold feature moments.</p>
+  </div>
+  <div class="bg-demo" style="background:var(--char-800)">
+    <span class="bg-tag bg-tag-dark">Dark Charcoal &mdash; #222222</span>
+    <div style="font-family:var(--font-head);font-size:clamp(1.125rem,2vw,1.5rem);font-weight:700;line-height:1.3;color:var(--white);margin-top:.75rem">Softer dark. Warm and premium.</div>
+    <p style="margin-top:.75rem;max-width:50ch;color:var(--char-400);font-size:1rem">Used for: Footer, testimonials (dark), partner sections.</p>
+  </div>
+
+  <div style="margin-top:2rem">
+    <div class="sub-label">Section Spacing Scale</div>
+    <div class="row">
+      <div class="col info-block">
+        <div class="info-block-title">Vertical section padding</div>
+        <p>Compact: <strong>64px</strong> top/bottom<br/>Standard: <strong>96px</strong> top/bottom<br/>Feature: <strong>128px</strong> top/bottom<br/>Hero: <strong>160px+</strong> top/bottom</p>
+      </div>
+      <div class="col info-block">
+        <div class="info-block-title">Content stack spacing</div>
+        <p>Eyebrow &rarr; Headline: <strong>20px</strong><br/>Headline &rarr; Body: <strong>24px</strong><br/>Body &rarr; CTA: <strong>40px</strong><br/>Card &rarr; Card: <strong>24px</strong></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     07 GRID & LAYOUT
+================================================================ -->
+<section class="section">
+  <div class="sec-label">07 &mdash; Grid &amp; Layout</div>
+  <div class="sec-title">Container &amp; Column System</div>
+  <p class="sec-desc">12-column grid. Max container 1280px. Gutters scale with viewport via clamp(). Asymmetric 5/7 or 4/8 splits for editorial rhythm.</p>
+
+  <div class="sub-label">12-column grid</div>
+  <div class="grid-12">
+    <div class="grid-col">1</div><div class="grid-col">2</div><div class="grid-col">3</div>
+    <div class="grid-col">4</div><div class="grid-col">5</div><div class="grid-col">6</div>
+    <div class="grid-col">7</div><div class="grid-col">8</div><div class="grid-col">9</div>
+    <div class="grid-col">10</div><div class="grid-col">11</div><div class="grid-col">12</div>
+  </div>
+
+  <div class="sub-label">Asymmetric 5/7 split &mdash; Hero layouts</div>
+  <div class="split-row" style="margin-bottom:1rem">
+    <div class="split-5 split-block split-block-pur"><div class="t-label" style="color:var(--purple-600)">5 cols &mdash; Copy / Content</div><div class="t-caption" style="margin-top:.5rem">Headline, body, CTAs</div></div>
+    <div class="split-7 split-block split-block-org"><div class="t-label" style="color:var(--orange-600)">7 cols &mdash; Visual / Media</div><div class="t-caption" style="margin-top:.5rem">Images, stats, interactive</div></div>
+  </div>
+
+  <div class="sub-label">Equal 4/4/4 split &mdash; Card grids</div>
+  <div class="split-row">
+    <div class="split-4 split-block split-block-pur"><div class="t-label" style="color:var(--purple-600)">4 cols</div></div>
+    <div class="split-4 split-block split-block-org"><div class="t-label" style="color:var(--orange-600)">4 cols</div></div>
+    <div class="split-4 split-block split-block-pur"><div class="t-label" style="color:var(--purple-600)">4 cols</div></div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     08 RADIUS & SHADOWS
+================================================================ -->
+<section class="section">
+  <div class="sec-label">08 &mdash; Radius &amp; Shadow System</div>
+  <div class="sec-title">Depth &amp; Edge Language</div>
+
+  <div class="sub-label">Border Radius Scale</div>
+  <div class="radius-row" style="margin-bottom:1.5rem">
+    <div><div class="radius-box" style="border-radius:2px">xs<br/>2px</div></div>
+    <div><div class="radius-box" style="border-radius:4px">sm<br/>4px</div></div>
+    <div><div class="radius-box" style="border-radius:8px">md<br/>8px</div></div>
+    <div><div class="radius-box" style="border-radius:12px">lg<br/>12px</div></div>
+    <div><div class="radius-box" style="border-radius:20px">xl<br/>20px</div></div>
+    <div><div class="radius-box" style="border-radius:32px">2xl<br/>32px</div></div>
+    <div><div class="radius-box" style="border-radius:999px;width:80px">pill</div></div>
+  </div>
+  <p class="t-caption" style="margin-bottom:2rem"><strong>Rule:</strong> Buttons/inputs = md–lg (8–12px). Cards = xl (20px). Section containers = 2xl (32px). Tags/labels = pill.</p>
+
+  <div class="sub-label">Shadow Scale</div>
+  <div class="shadow-row">
+    <div class="shadow-box" style="box-shadow:0 1px 2px rgba(0,0,0,.06)">xs</div>
+    <div class="shadow-box" style="box-shadow:0 2px 8px rgba(0,0,0,.08)">sm</div>
+    <div class="shadow-box" style="box-shadow:0 4px 20px rgba(0,0,0,.10)">md</div>
+    <div class="shadow-box" style="box-shadow:0 8px 40px rgba(0,0,0,.12)">lg</div>
+    <div class="shadow-box" style="box-shadow:0 16px 64px rgba(0,0,0,.14)">xl</div>
+    <div class="shadow-box" style="box-shadow:0 8px 32px rgba(247,147,30,.25)">orange</div>
+    <div class="shadow-box" style="box-shadow:0 8px 32px rgba(111,66,193,.20)">purple</div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     09 GEOMETRIC BRAND LANGUAGE
+================================================================ -->
+<section class="section">
+  <div class="sec-label">09 &mdash; Geometric Brand Language</div>
+  <div class="sec-title">Visual Vocabulary from the Logo</div>
+  <p class="sec-desc">The logo's angular triangular facets inspire a set of subtle graphic accents. Used sparingly — never as repeated patterns. The geometric language should feel sophisticated and intentional.</p>
+
+  <div class="geo-row" style="margin-bottom:2.5rem">
+    <div class="geo-item"><div class="tri-org"></div><div class="geo-cap">Triangle<br/>Orange</div></div>
+    <div class="geo-item"><div class="tri-pur"></div><div class="geo-cap">Triangle<br/>Purple</div></div>
+    <div class="geo-item"><div class="diamond"></div><div class="geo-cap">Diamond<br/>Rotated sq.</div></div>
+    <div class="geo-item"><div class="brand-line"></div><div class="geo-cap">Brand line<br/>Gradient</div></div>
+    <div class="geo-item">
+      <div class="dot-grid">
+        <div class="dot dot-acc"></div><div class="dot"></div><div class="dot"></div>
+        <div class="dot"></div><div class="dot dot-acc"></div><div class="dot"></div>
+        <div class="dot"></div><div class="dot"></div><div class="dot dot-acc"></div>
+      </div>
+      <div class="geo-cap">Dot grid<br/>Subtle texture</div>
+    </div>
+    <div class="geo-item"><div class="corner-mark"></div><div class="geo-cap">Corner mark<br/>Section accent</div></div>
+    <div class="geo-item">
+      <div style="width:3px;height:64px;background:var(--orange-500);border-radius:999px;"></div>
+      <div class="geo-cap">Vert. rule<br/>Divider</div>
+    </div>
+    <div class="geo-item">
+      <div style="width:44px;height:44px;border:2px solid var(--purple-500);border-radius:8px;transform:rotate(15deg);"></div>
+      <div class="geo-cap">Rotated sq.<br/>Bg detail</div>
+    </div>
+    <div class="geo-item">
+      <div class="bar-cluster">
+        <div style="width:4px;height:48px;background:var(--orange-500);border-radius:999px;"></div>
+        <div style="width:4px;height:32px;background:var(--purple-400);border-radius:999px;margin-top:8px;"></div>
+        <div style="width:4px;height:40px;background:var(--orange-400);border-radius:999px;margin-top:4px;"></div>
+      </div>
+      <div class="geo-cap">Bar cluster<br/>Data motif</div>
+    </div>
+    <div class="geo-item">
+      <div style="width:56px;height:56px;border-radius:50%;background:conic-gradient(var(--orange-500) 0deg 130deg,var(--purple-500) 130deg 230deg,var(--char-200) 230deg 360deg);"></div>
+      <div class="geo-cap">Arc segment<br/>Chart motif</div>
+    </div>
+  </div>
+
+  <div class="sub-label">Divider Styles</div>
+  <div class="divider-plain"></div>
+  <p class="t-caption" style="margin-bottom:1.5rem">Simple divider — Charcoal 200 &bull; 1px &bull; Between content blocks</p>
+  <div class="divider-brand"></div>
+  <p class="t-caption">Brand divider — Orange&rarr;Purple gradient &bull; 2px &bull; Section end markers / decorative accents</p>
+</section>
+
+
+<!-- ================================================================
+     10 BADGES & TAGS
+================================================================ -->
+<section class="section">
+  <div class="sec-label">10 &mdash; Badges &amp; Tags</div>
+  <div class="sec-title">Label Components</div>
+  <div class="badge-row">
+    <span class="badge badge-org">Performance</span>
+    <span class="badge badge-pur">Strategy</span>
+    <span class="badge badge-dark">Case Study</span>
+    <span class="badge badge-outline">Industry</span>
+    <span class="badge badge-org">New</span>
+    <span class="badge badge-pur">Featured</span>
+    <span class="badge badge-neu">Blog</span>
+    <span class="badge badge-org">SEO</span>
+    <span class="badge badge-pur">Paid Media</span>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     11 ICON SYSTEM
+================================================================ -->
+<section class="section">
+  <div class="sec-label">11 &mdash; Icon System</div>
+  <div class="sec-title">Icon Style &amp; Usage</div>
+  <p class="sec-desc">Icons use 2px stroke, rounded linecaps — line icons only (no filled/solid). Placed inside brand-tinted icon boxes. <strong>Hover to preview micro-animation.</strong></p>
+
+  <div class="icon-row">
+    <div class="icon-item"><div class="icon-box ib-org"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F7931E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><span class="icon-cap">Analytics</span></div>
+    <div class="icon-item"><div class="icon-box ib-pur"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><span class="icon-cap">Strategy</span></div>
+    <div class="icon-item"><div class="icon-box ib-org"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F7931E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div><span class="icon-cap">Growth</span></div>
+    <div class="icon-item"><div class="icon-box ib-pur"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><span class="icon-cap">Team</span></div>
+    <div class="icon-item"><div class="icon-box ib-org"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F7931E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><span class="icon-cap">Results</span></div>
+    <div class="icon-item"><div class="icon-box ib-pur"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="icon-cap">SEO</span></div>
+    <div class="icon-item"><div class="icon-box ib-org"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F7931E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><span class="icon-cap">Paid Ads</span></div>
+    <div class="icon-item"><div class="icon-box ib-drk"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div><span class="icon-cap">Content</span></div>
+    <div class="icon-item"><div class="icon-box ib-pur"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><span class="icon-cap">Brand</span></div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     12 FORM ELEMENTS
+================================================================ -->
+<section class="section">
+  <div class="sec-label">12 &mdash; Form Elements</div>
+  <div class="sec-title">Input Fields</div>
+  <p class="sec-desc">Focus ring uses Orange brand color with 3px soft halo — on-brand and accessible. Click any field to preview.</p>
+  <div style="max-width:340px">
+    <div class="form-group"><label class="form-label" for="d-name">Your Name</label><input class="form-input" id="d-name" type="text" placeholder="e.g. Sarah Johnson" /></div>
+    <div class="form-group"><label class="form-label" for="d-email">Business Email</label><input class="form-input" id="d-email" type="email" placeholder="hello@company.com" /></div>
+    <div class="form-group"><label class="form-label" for="d-budget">Monthly Budget</label><input class="form-input" id="d-budget" type="text" placeholder="e.g. $5,000 &ndash; $20,000" /></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center">Submit Enquiry <svg class="btn-arr" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     13 MOTION & ANIMATION
+================================================================ -->
+<section class="section">
+  <div class="sec-label">13 &mdash; Motion &amp; Animation</div>
+  <div class="sec-title">Interaction Principles</div>
+  <p class="sec-desc">Motion is purposeful, never decorative. Transitions communicate state changes; hover lifts signal interactivity. No idle looping animations. <strong>Hover the cards to preview each principle.</strong></p>
+
+  <div class="motion-grid" style="margin-bottom:2rem">
+    <div class="motion-card"><div class="motion-title">Lift Hover</div><div class="motion-ball"></div><div class="motion-bar"></div><div class="motion-detail" style="margin-top:.75rem">translateY(-4px) + shadow<br/>250ms ease-in-out</div></div>
+    <div class="motion-card"><div class="motion-title">Spring Scale</div><div class="motion-ball" style="background:var(--purple-500)"></div><div class="motion-bar"></div><div class="motion-detail" style="margin-top:.75rem">scale(1.25) + rotate<br/>400ms spring curve</div></div>
+    <div class="motion-card"><div class="motion-title">Progress Bar</div><div class="motion-ball" style="background:linear-gradient(135deg,var(--orange-500),var(--purple-500))"></div><div class="motion-bar"></div><div class="motion-detail" style="margin-top:.75rem">Width 0 &rarr; 100%<br/>400ms ease-in-out</div></div>
+    <div class="motion-card"><div class="motion-title">Fade Up</div><div class="motion-ball" style="background:var(--char-700)"></div><div class="motion-bar"></div><div class="motion-detail" style="margin-top:.75rem">Scroll-triggered<br/>opacity + translateY</div></div>
+  </div>
+
+  <div class="row">
+    <div class="col info-block">
+      <div class="info-block-title">Animation Direction Summary</div>
+      <p>
+        Scroll entrance: fade-up &bull; 500ms &bull; 80ms stagger<br/>
+        Hover: 150&ndash;250ms ease-in-out<br/>
+        Active/press: scale(0.97) &bull; 150ms<br/>
+        Page transitions: fade &bull; 300ms<br/>
+        Number counters: count-up on scroll &bull; 1200ms<br/>
+        Avoid: idle looping, flashy entrances
+      </p>
+    </div>
+    <div class="col info-block">
+      <div class="info-block-title">Easing Reference</div>
+      <p>
+        Default: cubic-bezier(.25,.46,.45,.94)<br/>
+        Spring: cubic-bezier(.34,1.56,.64,1)<br/>
+        Ease-in-out: cubic-bezier(.4,0,.2,1)<br/>
+        Fast: 150ms &bull; Normal: 250ms &bull; Slow: 400ms
+      </p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     14 NAVBAR PREVIEWS
+================================================================ -->
+<section class="section">
+  <div class="sec-label">14 &mdash; Navigation</div>
+  <div class="sec-title">Navbar Variants</div>
+
+  <div class="sub-label">Light background (default, sticky)</div>
+  <div class="navbar navbar-light" style="margin-bottom:1.5rem">
+    <div class="nav-logo">
+      <img src="../Official_Logo.jpeg" alt="Marketivity" style="height:32px;object-fit:contain;" />
+    </div>
+    <ul class="nav-links nav-links-dark">
+      <li><a href="#">Services</a></li>
+      <li><a href="#">Work</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Insights</a></li>
+    </ul>
+    <button class="btn btn-primary" style="font-size:.75rem;padding:10px 20px;">Book a Call &rarr;</button>
+  </div>
+
+  <div class="sub-label">Dark background variant</div>
+  <div class="navbar navbar-dark">
+    <div class="nav-logo">
+      <img src="../Official_Logo.jpeg" alt="Marketivity" style="height:32px;object-fit:contain;" />
+    </div>
+    <ul class="nav-links nav-links-light">
+      <li><a href="#">Services</a></li>
+      <li><a href="#">Work</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Insights</a></li>
+    </ul>
+    <button class="btn btn-ghost-light" style="font-size:.75rem;padding:9px 20px;">Book a Call</button>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     15 COMPOSITION PREVIEW
+================================================================ -->
+<section class="section">
+  <div class="sec-label">15 &mdash; Composition Preview</div>
+  <div class="sec-title">Hero &amp; CTA Example</div>
+  <p class="sec-desc">Sample compositions demonstrating the complete design system applied holistically. This is how the tokens, typography, and components work together.</p>
+
+  <div class="sub-label">Hero Section &mdash; Dark variant</div>
+  <div class="hero-comp" style="margin-bottom:2rem">
+    <div class="hero-geo"></div>
+    <div class="hero-content">
+      <div class="hero-ew"><span class="hero-ew-line"></span>Digital Growth Partners</div>
+      <h2 class="hero-h">Turn Marketing Into<br/>Measurable <span class="hero-h-acc">Business Growth.</span></h2>
+      <p class="hero-body">We design and execute digital strategies that compound. From paid media to organic presence &mdash; Marketivity is the partner serious businesses trust.</p>
+      <div class="hero-acts">
+        <button class="btn btn-primary">Book Discovery Call &rarr;</button>
+        <button class="btn btn-ghost-light">See Our Work</button>
+      </div>
+    </div>
+    <div class="hero-vis">
+      <div class="hero-stat-card"><div class="hs-num">340%</div><div class="hs-desc">Average campaign ROI delivered</div></div>
+      <div class="hero-stat-card"><div class="hs-num hs-num-pur">98%</div><div class="hs-desc">Client retention rate</div></div>
+      <div class="hero-stat-card"><div class="hs-num">12+</div><div class="hs-desc">Industries served</div></div>
+      <div class="hero-stat-card"><div class="hs-num hs-num-pur">&#163;40M+</div><div class="hs-desc">Ad spend managed profitably</div></div>
+    </div>
+  </div>
+
+  <div class="sub-label">CTA Section</div>
+  <div class="cta-comp">
+    <div class="cta-inner">
+      <div class="cta-ew">Ready to grow?</div>
+      <h3 class="cta-h">Let&rsquo;s Build Something<br/>That Moves the Needle.</h3>
+      <p class="cta-body">Book a free 30-minute discovery call. We&rsquo;ll audit your current digital presence and outline a growth strategy &mdash; no obligations.</p>
+      <div class="cta-acts">
+        <button class="btn btn-primary">Book Discovery Call &rarr;</button>
+        <button class="btn btn-ghost-light">View Case Studies</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     16 PAGE RHYTHM DIAGRAM
+================================================================ -->
+<section class="section">
+  <div class="sec-label">16 &mdash; Page Rhythm Strategy</div>
+  <div class="sec-title">Light / Dark Section Sequencing</div>
+  <p class="sec-desc">The homepage follows a deliberate visual rhythm — quiet &rarr; bold &rarr; informative &rarr; visual &rarr; conversion. This prevents monotony and guides the user's energy through the page.</p>
+
+  <div class="rhythm-list">
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-900)"><div class="rhythm-chip-label" style="color:var(--white)">DARK</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#181818</div></div>
+      <div class="rhythm-desc"><strong>Hero</strong> &mdash; Bold, impactful, high authority opening statement</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--white);border:1px solid var(--char-200)"><div class="rhythm-chip-label" style="color:var(--char-900)">LIGHT</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#FAFAF8</div></div>
+      <div class="rhythm-desc"><strong>Client logos</strong> &mdash; Breathe, quiet confidence, social proof</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-100)"><div class="rhythm-chip-label" style="color:var(--char-700)">OFF-WHITE</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#F2F1EE</div></div>
+      <div class="rhythm-desc"><strong>Services grid</strong> &mdash; Informative, structured, scannable</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-800)"><div class="rhythm-chip-label" style="color:var(--white)">DARK CHARCOAL</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#222222</div></div>
+      <div class="rhythm-desc"><strong>Stats / Results</strong> &mdash; Bold numbers, orange accent, authority</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--white);border:1px solid var(--char-200)"><div class="rhythm-chip-label" style="color:var(--char-900)">LIGHT</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#FAFAF8</div></div>
+      <div class="rhythm-desc"><strong>Case studies / Work</strong> &mdash; Showcase, visual, spacious</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-100)"><div class="rhythm-chip-label" style="color:var(--char-700)">OFF-WHITE</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#F2F1EE</div></div>
+      <div class="rhythm-desc"><strong>Testimonials / Process</strong> &mdash; Human, relatable, credible</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-900)"><div class="rhythm-chip-label" style="color:var(--orange-500)">DARK + ORANGE</div><div class="rhythm-chip-sub" style="color:var(--char-400)">CTA focus</div></div>
+      <div class="rhythm-desc"><strong>CTA section</strong> &mdash; Conversion-focused, energetic close</div>
+    </div>
+    <div class="rhythm-row">
+      <div class="rhythm-chip" style="background:var(--char-800)"><div class="rhythm-chip-label" style="color:var(--white)">DARK CHARCOAL</div><div class="rhythm-chip-sub" style="color:var(--char-400)">#222222</div></div>
+      <div class="rhythm-desc"><strong>Footer</strong> &mdash; Structural, warm, trustworthy close</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+     FOOTER
+================================================================ -->
+<div class="ds-footer">
+  <div class="ds-footer-brand"><strong>Marketivity</strong> Design System &mdash; Visual Foundation v1.0<br/>Based on Official_Logo.jpeg &bull; Phase 1 of 3 &bull; Ready for website build</div>
+  <div class="dot-live"><div class="dot-pulse"></div><span class="dot-text">Design System Active</span></div>
+</div>
+
+</div><!-- end page -->
+</body>
+</html>
