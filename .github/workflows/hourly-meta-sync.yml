@@ -1,0 +1,29 @@
+name: Hourly Meta Sync
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketivity-hourly-meta-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Sync Insights
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          RESPONSE_CODE=$(curl -s -S -o response.txt -w "%{http_code}" -H "Authorization: Bearer $CRON_SECRET" https://clientportal.marketivity.agency/api/cron/sync-insights)
+          if [ "$RESPONSE_CODE" -ne 200 ]; then
+            echo "Sync failed with HTTP status code $RESPONSE_CODE"
+            cat response.txt
+            exit 1
+          fi
+          echo "Sync completed successfully with HTTP status code $RESPONSE_CODE"

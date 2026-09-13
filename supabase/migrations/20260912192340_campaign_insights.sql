@@ -1,7 +1,7 @@
 -- Migration for Step 09: Campaign Insights
 
 CREATE TABLE public.campaign_insights (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
     date DATE NOT NULL, -- The date these metrics represent.
     impressions INTEGER DEFAULT 0,

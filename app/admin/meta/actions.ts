@@ -199,7 +199,7 @@ export async function registerCampaign(metaCampaignId: string, localAdAccountId:
         });
 
         const availableCampaigns = await metaClient.getCampaigns(adAccount.meta_ad_account_id);
-        const targetCampaign = availableCampaigns.find((c: any) => c.id === metaCampaignId);
+        const targetCampaign = availableCampaigns.find(c => c.meta_campaign_id === metaCampaignId);
 
         if (!targetCampaign) {
             return { success: false, error: 'This campaign could not be verified with Meta or does not belong to the selected Ad Account.' };
@@ -211,12 +211,16 @@ export async function registerCampaign(metaCampaignId: string, localAdAccountId:
             .from('campaigns')
             .upsert({
                 ad_account_id: localAdAccountId, // References our validated local Ad Account
-                meta_campaign_id: targetCampaign.id,
+                meta_campaign_id: targetCampaign.meta_campaign_id,
                 name: targetCampaign.name,
                 status: targetCampaign.status || 'UNKNOWN',
                 effective_status: targetCampaign.effective_status || null,
                 objective: targetCampaign.objective || null,
-                buying_type: targetCampaign.buying_type || null
+                buying_type: targetCampaign.buying_type || null,
+                daily_budget: targetCampaign.daily_budget,
+                lifetime_budget: targetCampaign.lifetime_budget,
+                start_time: targetCampaign.start_time,
+                end_time: targetCampaign.end_time
             }, {
                 onConflict: 'meta_campaign_id',
                 ignoreDuplicates: false

@@ -1,21 +1,55 @@
 'use client';
 import './dashboard.css';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Chart from 'chart.js/auto';
 
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 
-export default function DashboardClient({ profile, client, initialInsights = { spend: 0, impressions: 0, reach: 0, clicks: 0, cpr: 0, ctr: 0 } }: { profile: UserProfile | null, client: ClientRecord | null, initialInsights?: any }) {
+export default function DashboardClient({
+  profile,
+  client,
+  campaigns,
+  selectedCampaign,
+  insights,
+  aggregates,
+  range,
+  lastSyncedAt
+}: {
+  profile: UserProfile | null;
+  client: ClientRecord | null;
+  campaigns: any[];
+  selectedCampaign: any;
+  insights: any[];
+  aggregates: any;
+  range: string;
+  lastSyncedAt: string | null;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  const chartRef = useRef<HTMLCanvasElement>(null);
+  const chartInstance = useRef<Chart | null>(null);
+
+  const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.set('campaignId', e.target.value);
+    router.push(`${pathname}?${newParams.toString()}`);
+  };
+
+  const handleRangeChange = (newRange: string) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.set('range', newRange);
+    newParams.delete('days'); // clear legacy param
+    router.push(`${pathname}?${newParams.toString()}`);
+  };
 
   const handleSignOut = async (e: React.MouseEvent) => {
     e.preventDefault();
     await supabase.auth.signOut();
     router.push('/login');
-    router.refresh();
   };
 
   useEffect(() => {
@@ -40,6 +74,82 @@ export default function DashboardClient({ profile, client, initialInsights = { s
       io.disconnect();
     };
   }, []);
+
+  // Chart Rendering
+  useEffect(() => {
+    if (!chartRef.current || !insights || insights.length === 0) return;
+
+    if (chartInstance.current) {
+      chartInstance.current.destroy();
+    }
+
+    const labels = insights.map((i: any) => {
+      const d = new Date(i.date);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    });
+
+    const msgData = insights.map((i: any) => i.messaging_conversations_started || 0);
+    const spendData = insights.map((i: any) => Number(i.spend || 0));
+
+    chartInstance.current = new Chart(chartRef.current, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Conversations',
+            data: msgData,
+            borderColor: '#22C55E',
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Spend ($)',
+            data: spendData,
+            borderColor: '#F7931E',
+            backgroundColor: 'transparent',
+            borderDash: [5, 5],
+            tension: 0.4,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            title: { display: true, text: 'Conversations' },
+            min: 0,
+            ticks: { precision: 0 }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            title: { display: true, text: 'Spend ($)' },
+            grid: { drawOnChartArea: false },
+            min: 0
+          }
+        }
+      }
+    });
+
+    return () => {
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+      }
+    };
+  }, [insights]);
 
   return (
     <>
@@ -106,54 +216,67 @@ export default function DashboardClient({ profile, client, initialInsights = { s
         <span className="page-title">Campaign Dashboard</span>
       </div>
       <div className="topbar-right">
-        <div className="sync-pill">
+        <div className="sync-pill" style={{ whiteSpace: 'nowrap' }}>
           <span className="sync-dot"></span>
-          Updated recently
+          {lastSyncedAt ? `Last synced: ${new Date(lastSyncedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet'}
         </div>
         <div className="topbar-avatar">{profile?.full_name ? profile.full_name.substring(0, 2).toUpperCase() : 'CL'}</div>
       </div>
     </header>
 
     
-    <main className="content">
+        <main className="content">
+      {(!campaigns || campaigns.length === 0) ? (
+        <div className="demo-notice fade-up" style={{ textAlign: 'center', padding: '40px' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ margin: '0 auto 10px', display: 'block' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <h2 style={{ marginBottom: '10px' }}>No Campaigns Assigned</h2>
+          <span>Your campaigns will appear here once they are assigned.</span>
+        </div>
+      ) : (<>
 
-      
+      {/* Top Bar - Campaign Selector & Sync Status */}
       <div className="demo-notice fade-up">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span>Data is synced from the Meta Marketing API via a secure backend cron job.</span>
       </div>
 
-      
       <div className="dash-header fade-up">
         <div>
           <h1 className="dash-greeting">Good evening, {profile?.full_name?.split(' ')[0] || 'Client'}.</h1>
           <p className="dash-sub">Here's how your campaign is performing right now.</p>
         </div>
-        <div >
-          <div className="status-live">
-            <span className="live-dot"></span>LIVE
+        <div>
+          <div className={`status-live ${selectedCampaign?.status === 'ACTIVE' ? '' : 'paused'}`}>
+            <span className="live-dot"></span>{selectedCampaign?.status || 'UNKNOWN'}
           </div>
-          <div >Campaign is currently active</div>
+          <div>Campaign is currently {selectedCampaign?.status?.toLowerCase() || 'unknown'}</div>
         </div>
       </div>
 
-      
       <div className="campaign-bar fade-up">
         <div className="selector-group">
           <div className="selector-label">Campaign</div>
-          <div className="selector-val">{client?.name || 'Marketivity Client'} — Messages</div>
+          {campaigns && campaigns.length > 1 ? (
+            <select className="selector-val" style={{ background: 'transparent', border: 'none', color: 'inherit', fontWeight: 'bold', outline: 'none', cursor: 'pointer', paddingRight: '10px' }} value={selectedCampaign?.id || ''} onChange={handleCampaignChange}>
+              {campaigns.map((c: any) => (
+                <option key={c.id} value={c.id} style={{ color: '#000' }}>{c.name}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="selector-val">{selectedCampaign?.name || 'No Campaign'}</div>
+          )}
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
           <div className="selector-label">Status</div>
-          <div >
-            <span ></span> Active
+          <div>
+            {selectedCampaign?.status || 'Unknown'}
           </div>
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
           <div className="selector-label">Objective</div>
-          <div className="selector-val">Messaging Conversations</div>
+          <div className="selector-val">{selectedCampaign?.objective || 'Not Set'}</div>
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
@@ -164,13 +287,14 @@ export default function DashboardClient({ profile, client, initialInsights = { s
           </div>
         </div>
         <div className="date-select">
-          <button className="date-btn" data-range="7">7d</button>
-          <button className="date-btn active" data-range="14">14d</button>
-          <button className="date-btn" data-range="30">30d</button>
+          <button className={`date-btn ${range === 'today' ? 'active' : ''}`} onClick={() => handleRangeChange('today')}>Today</button>
+          <button className={`date-btn ${range === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')}>7d</button>
+          <button className={`date-btn ${range === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')}>14d</button>
+          <button className={`date-btn ${range === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')}>30d</button>
+          <button className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} title="All available data">Max</button>
         </div>
       </div>
 
-      
       <div className="kpi-section fade-up">
         <div className="section-eyebrow">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -183,17 +307,17 @@ export default function DashboardClient({ profile, client, initialInsights = { s
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F7931E" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               Total Spend
             </div>
-            <div className="kpi-value">${initialInsights.spend.toFixed(2)}</div>
+            <div className="kpi-value">${aggregates?.spend?.toFixed(2) || '0.00'}</div>
             <div className="kpi-subtext">Lifetime tracked spend</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
-            <div className="kpi-label">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Reach
-            </div>
-            <div className="kpi-value">{initialInsights.reach.toLocaleString()}</div>
-            <div className="kpi-subtext">Unique accounts reached</div>
+              <div className="kpi-label">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Avg Daily Reach
+              </div>
+            <div className="kpi-value">{aggregates?.reach ? Math.round(aggregates.reach).toLocaleString() : '0'}</div>
+            <div className="kpi-subtext">Avg accounts reached per day</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
@@ -201,78 +325,79 @@ export default function DashboardClient({ profile, client, initialInsights = { s
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               Impressions
             </div>
-            <div className="kpi-value">{initialInsights.impressions.toLocaleString()}</div>
+            <div className="kpi-value">{aggregates?.impressions?.toLocaleString() || '0'}</div>
             <div className="kpi-subtext">Total ad views served</div>
           </div>
           <div className="kpi-card green">
             <div className="kpi-card-accent"></div>
             <div className="kpi-label">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Results (Clicks)
+              Results (Conversations)
             </div>
-            <div className="kpi-value">{initialInsights.clicks.toLocaleString()}</div>
-            <div className="kpi-subtext">Total link clicks</div>
+            <div className="kpi-value">{aggregates?.messaging_conversations?.toLocaleString() || '0'}</div>
+            <div className="kpi-subtext">Messaging conversations started</div>
           </div>
           <div className="kpi-card purple">
             <div className="kpi-card-accent"></div>
             <div className="kpi-label">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Cost per Click
+              Cost per Conv.
             </div>
-            <div className="kpi-value">${initialInsights.cpr.toFixed(2)}</div>
-            <div className="kpi-subtext">Average cost per click</div>
+            <div className="kpi-value">{aggregates?.cost_per_messaging_conversation != null ? `$${aggregates.cost_per_messaging_conversation.toFixed(2)}` : 'N/A'}</div>
+            <div className="kpi-subtext">Avg cost per conversation</div>
           </div>
         </div>
 
-        
-        <div className="kpi-grid-sec" >
+        <div className="kpi-grid-sec">
           <div className="kpi-card-sm">
             <div className="kpi-sm-label">CTR</div>
-            <div className="kpi-sm-value">{initialInsights.ctr.toFixed(2)}%</div>
+            <div className="kpi-sm-value">{aggregates?.ctr?.toFixed(2) || '0.00'}%</div>
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPC</div>
-            <div className="kpi-sm-value">${initialInsights.cpr.toFixed(2)}</div>
+            <div className="kpi-sm-label">CPA (Msg)</div>
+            <div className="kpi-sm-value">{aggregates?.cost_per_messaging_conversation != null ? `$${aggregates.cost_per_messaging_conversation.toFixed(2)}` : 'N/A'}</div>
           </div>
           <div className="kpi-card-sm">
             <div className="kpi-sm-label">CPM</div>
-            <div className="kpi-sm-value">${initialInsights.impressions > 0 ? ((initialInsights.spend / initialInsights.impressions) * 1000).toFixed(2) : '0.00'}</div>
+            <div className="kpi-sm-value">${aggregates?.cpm?.toFixed(2) || '0.00'}</div>
           </div>
-          <div className="kpi-card-sm">
+          <div className="kpi-card-sm" style={{ visibility: 'hidden' }}>
             <div className="kpi-sm-label">Frequency</div>
-            <div className="kpi-sm-value">{initialInsights.reach > 0 ? (initialInsights.impressions / initialInsights.reach).toFixed(2) : '0.00'}</div>
+            <div className="kpi-sm-value">0.00</div>
           </div>
         </div>
       </div>
 
-      
       <div className="chart-card fade-up">
         <div className="chart-header">
           <div>
             <div className="chart-title">Performance Overview</div>
-            <div className="chart-sub">Campaign trend — last 14 days</div>
+            <div className="chart-sub">
+              {range === 'maximum' ? 'All available data' : range === 'today' ? 'Today' : `Last ${range} days`}
+            </div>
           </div>
           <div className="chart-tabs">
             <button className="chart-tab active" data-chart="results">Results</button>
-            <button className="chart-tab" data-chart="spend">Spend</button>
-            <button className="chart-tab" data-chart="cpr">Cost / Result</button>
           </div>
         </div>
         <div className="chart-wrapper">
-          <canvas id="perfChart"></canvas>
+          {(!insights || insights.length === 0) ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#64748B' }}>
+              No performance data available for this period.
+            </div>
+          ) : (
+            <canvas id="perfChart" ref={chartRef}></canvas>
+          )}
         </div>
         <div className="chart-notice">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" ><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          Chart shows <span>illustrative development data</span>. Production data will connect to the Meta Marketing API.
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Chart shows real live data securely synced from the Meta Marketing API.
         </div>
       </div>
 
-      
       <div className="two-col">
-        
         <div className="col-left">
 
-          
           <div className="status-card fade-up">
             <div className="card-title">
               <span>Campaign Status</span>
@@ -280,201 +405,69 @@ export default function DashboardClient({ profile, client, initialInsights = { s
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
             </div>
-            <div className="status-indicator si-live">
-              <span className="si-dot"></span> LIVE — Campaign Active
+            <div className={`status-indicator ${selectedCampaign?.status === 'ACTIVE' ? 'si-live' : ''}`}>
+              {selectedCampaign?.status === 'ACTIVE' ? <span className="si-dot"></span> : null} {selectedCampaign?.status || 'UNKNOWN'}
             </div>
-            <p className="status-description">Your campaign is currently active and delivering to your target audience on Facebook and Instagram.</p>
+            <p className="status-description">Live campaign details synced directly from Meta.</p>
             <div className="status-details">
-              <div className="detail-row"><span className="detail-key">Campaign Name</span><span className="detail-val">{client?.name || 'Marketivity Client'} — Messages</span></div>
-              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">Messaging Conversations</span></div>
-              <div className="detail-row"><span className="detail-key">Started</span><span className="detail-val">Sep 1, 2025</span></div>
-              <div className="detail-row"><span className="detail-key">Daily Budget</span><span className="detail-val detail-val-orange">$5.00 / day</span></div>
-              <div className="detail-row"><span className="detail-key">Amount Spent</span><span className="detail-val">$4.00 (demo)</span></div>
+              <div className="detail-row"><span className="detail-key">Campaign Name</span><span className="detail-val">{selectedCampaign?.name || 'No Name'}</span></div>
+              <div className="detail-row"><span className="detail-key">Status</span><span className="detail-val">{selectedCampaign?.effective_status || selectedCampaign?.status || 'Unknown'}</span></div>
+              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">{selectedCampaign?.objective || 'Not Set'}</span></div>
+              <div className="detail-row"><span className="detail-key">Started</span><span className="detail-val">{selectedCampaign?.start_time ? new Date(selectedCampaign.start_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</span></div>
+              <div className="detail-row"><span className="detail-key">End Date</span><span className="detail-val">{selectedCampaign?.end_time ? new Date(selectedCampaign.end_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Ongoing'}</span></div>
+              {selectedCampaign?.daily_budget != null && (
+                <div className="detail-row">
+                  <span className="detail-key">
+                    {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget' : 'Daily Budget'}
+                  </span>
+                  <span className="detail-val detail-val-orange">
+                    ${Number(selectedCampaign.daily_budget).toFixed(2)} / day
+                  </span>
+                </div>
+              )}
+              {selectedCampaign?.lifetime_budget != null && (
+                <div className="detail-row">
+                  <span className="detail-key">
+                    {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget (Lifetime)' : 'Lifetime Budget'}
+                  </span>
+                  <span className="detail-val detail-val-orange">
+                    ${Number(selectedCampaign.lifetime_budget).toFixed(2)} total
+                  </span>
+                </div>
+              )}
+              {selectedCampaign?.daily_budget == null && selectedCampaign?.lifetime_budget == null && (
+                <div className="detail-row"><span className="detail-key">Budget</span><span className="detail-val">Not set</span></div>
+              )}
             </div>
           </div>
 
-          
-          <div className="details-card fade-up">
-            <button className="details-toggle" id="detailsToggle">
-              <span>Campaign Details</span>
-              <span className="toggle-arrow">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
-            </button>
-            <div className="details-body" id="detailsBody">
-              <div className="details-grid">
-                <div className="detail-field"><div className="df-label">Platform</div><div className="df-value">Facebook &amp; Instagram</div></div>
-                <div className="detail-field"><div className="df-label">Ad Placements</div><div className="df-value">Automatic</div></div>
-                <div className="detail-field"><div className="df-label">Audience</div><div className="df-value">Custom — defined</div></div>
-                <div className="detail-field"><div className="df-label">Location</div><div className="df-value">Rajshahi, BD</div></div>
-                <div className="detail-field"><div className="df-label">Age Range</div><div className="df-value">18–55</div></div>
-                <div className="detail-field"><div className="df-label">Gender</div><div className="df-value">All</div></div>
-                <div className="detail-field"><div className="df-label">End Date</div><div className="df-value df-value-muted">Ongoing</div></div>
-                <div className="detail-field"><div className="df-label">Billing Event</div><div className="df-value df-value-muted">Impressions</div></div>
-              </div>
-            </div>
-          </div>
+          {/* Future slot: Dynamic Campaign Details could go here */}
 
         </div>
 
-        
         <div className="col-right">
-
           
-          <div className="update-card fade-up">
-            <div className="update-inner">
-              <div className="update-type update-type-perf">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                Performance Update
-              </div>
-              <div className="update-title">Campaign is delivering consistently.</div>
-              <div className="update-body">
-                Your campaign is currently generating messaging conversations at a competitive cost. We are actively monitoring audience response and creative performance. Optimization decisions will be made once we have sufficient data from the first phase of delivery.
-              </div>
-              <div className="update-meta">
-                <div className="update-meta-from">
-                  <div className="team-avatar">M</div>
-                  <span>Marketivity Team</span>
-                </div>
-                <span>Sep 12, 2025</span>
-              </div>
-            </div>
-          </div>
+          {/* Future slot: Updates and Recommendations */}
 
-          
-          <div className="rec-card fade-up">
-            <div className="card-title" >
-              <span>Marketivity Recommendations</span>
-              <div className="card-title-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              </div>
-            </div>
-            <div className="rec-list">
-              <div className="rec-item">
-                <div className="rec-icon-box rib-orange">💡</div>
-                <div className="rec-content">
-                  <div className="rec-type">Creative Recommendation</div>
-                  <div className="rec-text">Consider preparing an additional creative variation. Testing multiple creatives helps identify which message resonates most with your audience.</div>
-                </div>
-              </div>
-              <div className="rec-item">
-                <div className="rec-icon-box rib-purple">🎯</div>
-                <div className="rec-content">
-                  <div className="rec-type rec-type-pur">Audience Observation</div>
-                  <div className="rec-text">We are monitoring the quality of incoming conversations before recommending any audience expansion. Patience here protects your budget.</div>
-                </div>
-              </div>
-              <div className="rec-item">
-                <div className="rec-icon-box rib-green">📊</div>
-                <div className="rec-content">
-                  <div className="rec-type rec-type-grn">Budget Note</div>
-                  <div className="rec-text">Current performance is being evaluated at the existing budget level before any increase is recommended. We will advise when the data supports scaling.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      
-      <div className="bottom-row">
-
-        
-        <div className="activity-card fade-up">
-          <div className="card-title" >
-            <span>Recent Activity</span>
-            <div className="card-title-icon">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" strokeWidth="2" strokeLinecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            </div>
-          </div>
-          <div className="activity-list">
-            <div className="activity-date-group">
-              <div className="activity-date-label">Today — Sep 12</div>
-              <div className="activity-item act-primary">
-                <div className="act-content">
-                  <div className="act-title">Campaign optimization reviewed</div>
-                  <div className="act-sub">Audience delivery and creative performance assessed. No changes required at this stage.</div>
-                </div>
-              </div>
-              <div className="activity-item act-purple">
-                <div className="act-content">
-                  <div className="act-title">Performance update published</div>
-                  <div className="act-sub">Marketivity team posted a campaign status update to your portal.</div>
-                </div>
-              </div>
-            </div>
-            <div className="activity-date-group">
-              <div className="activity-date-label">Yesterday — Sep 11</div>
-              <div className="activity-item">
-                <div className="act-content">
-                  <div className="act-title">Creative performance monitored</div>
-                  <div className="act-sub">Ad creative delivery assessed across placements. Performing within expected range.</div>
-                </div>
-              </div>
-            </div>
-            <div className="activity-date-group">
-              <div className="activity-date-label">Sep 10</div>
-              <div className="activity-item act-green">
-                <div className="act-content">
-                  <div className="act-title">Messaging conversations growing</div>
-                  <div className="act-sub">Campaign passed the learning phase. Delivery becoming more stable.</div>
-                </div>
-              </div>
-            </div>
-            <div className="activity-date-group">
-              <div className="activity-date-label">Sep 1</div>
-              <div className="activity-item act-primary">
-                <div className="act-content">
-                  <div className="act-title">Campaign launched</div>
-                  <div className="act-sub">{client?.name || 'Marketivity Client'} — Messages campaign went live on Facebook &amp; Instagram.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        
-        <div className="col-right">
-          <div className="update-card fade-up" >
-            <div className="update-inner">
-              <div className="update-type" >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Optimization Update
-              </div>
-              <div className="update-title" >Campaign is in the learning phase.</div>
-              <div className="update-body" >
-                All new campaigns go through Meta's learning phase — a period where the system finds the best audience for your objective. We expect delivery to stabilise over the coming days. No action is needed from your side.
-              </div>
-              <div className="update-meta" >
-                <div className="update-meta-from">
-                  <div className="team-avatar">M</div>
-                  <span>Marketivity Team</span>
-                </div>
-                <span>Sep 3, 2025</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="activity-card fade-up" >
-            <div className="card-title" >
+          <div className="activity-card fade-up">
+            <div className="card-title">
               <span>Your Account</span>
             </div>
             <div className="detail-row"><span className="detail-key">Client</span><span className="detail-val">{client?.name || 'Marketivity Client'}</span></div>
             <div className="detail-row"><span className="detail-key">Account Manager</span><span className="detail-val">Marketivity Team</span></div>
-            <div className="detail-row"><span className="detail-key">Active Campaigns</span><span className="detail-val detail-val-orange">1</span></div>
-            <div className="detail-row"><span className="detail-key">Portal Access</span><span className="detail-val" >Active</span></div>
-            <div className="detail-row" >
-              <a href="mailto:hello@marketivity.com" >
+            <div className="detail-row"><span className="detail-key">Active Campaigns</span><span className="detail-val detail-val-orange">{campaigns.filter((c: any) => c.status === 'ACTIVE' || c.effective_status === 'ACTIVE').length}</span></div>
+            <div className="detail-row"><span className="detail-key">Portal Access</span><span className="detail-val">Active</span></div>
+            <div className="detail-row">
+              <a href="mailto:hello@marketivity.com">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 Contact your account team
               </a>
             </div>
           </div>
+
         </div>
-
       </div>
-
+      </>)}
     </main>
   </div>
 
