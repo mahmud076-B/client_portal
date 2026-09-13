@@ -2,7 +2,7 @@
 
 ## 1. Final Architecture
 
-The production scheduled sync architecture for Marketivity Client Portal is configured as follows:
+The production scheduled sync architecture for Marketivity Client Portal is configured, verified, and operational:
 
 ```text
 GitHub Actions (Hourly Schedule: 0 * * * *)
@@ -20,25 +20,28 @@ Supabase Database (campaigns, campaign_insights, sync_logs)
 - **Scheduler**: GitHub Actions scheduled workflow (`.github/workflows/hourly-meta-sync.yml`).
 - **Endpoint**: `https://clientportal.marketivity.agency/api/cron/sync-insights`.
 - **Authorization**: Mandatory `Authorization: Bearer <CRON_SECRET>` header.
-- **Native Vercel Cron**: Disabled (`vercel.json` contains `{}`). This eliminates any duplicate or competing cron runs on Vercel's Hobby tier.
+- **Native Vercel Cron**: Disabled (`vercel.json` contains `{}`). This eliminates duplicate or competing cron runs on Vercel's Hobby tier.
 
 ---
 
 ## 2. Secret Rotation
 
 - **Previous State**: Development secret `test_secret_123` was present in local configuration.
-- **Current State**: The weak secret has been completely rotated and replaced with a cryptographically secure 256-bit (32 random bytes, 64-character hex) random token.
+- **Current State**: The weak secret was replaced with a cryptographically secure 256-bit (32 random bytes, 64-character hex) random token.
 - **Storage**:
   - Updated locally in `.env.local` and `.env`.
-  - Both `.env.local` and `.env` are verified in `.gitignore` and have never been committed to git history.
+  - Both files are in `.gitignore` and have never been committed to git history.
+  - Secret was configured in Vercel Production Environment Variables (`CRON_SECRET`).
+  - Secret was configured in GitHub Actions Repository Secrets (`CRON_SECRET`).
   - The plaintext secret value is strictly excluded from source code, workflow YAML, git commits, and public reports.
 
 ---
 
 ## 3. Vercel Configuration
 
-- `vercel.json` has been cleared to `{}`. No native cron jobs are defined in Vercel, preventing duplicate execution and avoiding Vercel Hobby plan limitations (which silently restricts hourly crons to once daily).
-- The rotated `CRON_SECRET` must be set in Vercel's Project Settings under Environment Variables with **Production** scope.
+- `vercel.json` is set to `{}` with no native cron schedules.
+- `CRON_SECRET` is configured in Vercel Project Settings → Environment Variables with **Production** scope.
+- Deployment redeployed and verified live.
 
 ---
 
@@ -70,7 +73,7 @@ Workflow file: [hourly-meta-sync.yml](file:///d:/ClientPortal/.github/workflows/
       echo "Sync completed successfully with HTTP status code $RESPONSE_CODE"
   ```
 - **Error Handling**: Fails visibly if HTTP status is non-200 (4xx, 5xx) or on network failures.
-- **Credential Protection**: The secret is passed via environment variable `CRON_SECRET` and is never printed or echoed. No Supabase service-role keys or Meta API credentials are placed in GitHub.
+- **Credential Protection**: The secret is passed via environment variable `CRON_SECRET` and is masked (`Authorization: ***`). No Supabase service-role keys or Meta API credentials are placed in GitHub.
 
 ---
 
@@ -78,7 +81,7 @@ Workflow file: [hourly-meta-sync.yml](file:///d:/ClientPortal/.github/workflows/
 
 - **Schedule**: `0 * * * *` (UTC).
 - **Frequency**: Every hour on the hour (24 times per day).
-- **Manual Trigger**: `workflow_dispatch` is enabled, allowing on-demand execution from GitHub's Actions UI.
+- **Manual Trigger**: `workflow_dispatch` is enabled and verified.
 - **Terminology**: Labeled as "Hourly sync" / "Updated hourly" across the application to reflect Meta API processing and attribution timelines truthfully.
 
 ---
@@ -103,63 +106,37 @@ if (
 | No Authorization header | `401 Unauthorized` | **PASSED** |
 | Invalid secret (`Bearer wrong-secret`) | `401 Unauthorized` | **PASSED** |
 | Former weak secret (`Bearer test_secret_123`) | `401 Unauthorized` | **PASSED** |
-| Valid rotated secret (`Bearer <NEW_SECRET>`) | `200 OK` | **PASSED** |
+| Rotated production secret | `200 OK` | **PASSED** |
 
 ---
 
-## 7. Manual GitHub & Vercel Action Required
+## 7. Production Test & Verification
 
-To activate production hourly syncing, complete the following manual steps:
-
-### Step A: Configure Vercel Production Secret
-1. Open your [Vercel Dashboard](https://vercel.com).
-2. Select the `client_portal` project.
-3. Navigate to **Settings** → **Environment Variables**.
-4. Add or update the variable:
-   - **Key**: `CRON_SECRET`
-   - **Value**: *(Copy the value of `CRON_SECRET` from your local `.env.local` file)*
-   - **Environment**: Check **Production** (and Preview if needed).
-5. Save changes.
-
-### Step B: Configure GitHub Actions Secret
-1. Open the GitHub repository: `https://github.com/mahmud076-B/client_portal`.
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**.
-3. Under **Repository secrets**, click **New repository secret** (or update if already existing):
-   - **Name**: `CRON_SECRET`
-   - **Secret**: *(Paste the exact same secret value copied from `.env.local`)*
-4. Click **Add secret**.
-
-### Step C: Test Workflow Run
-1. In GitHub, navigate to the **Actions** tab.
-2. Select **Hourly Meta Sync** in the left sidebar.
-3. Click **Run workflow** → select branch `main` → click the green **Run workflow** button.
-4. Verify the job completes with a green checkmark.
-
----
-
-## 8. Production Test
-
-- **Local Verification**: Verified locally via Next.js development server. Endpoint returned status `200` with payload:
-  `{"success":true,"results":[...]}`
 - **Production URL**: `https://clientportal.marketivity.agency/api/cron/sync-insights`
-- **Deployment Status**: Production will authenticate and sync as soon as `CRON_SECRET` is added to Vercel and the latest code is deployed.
+- **Manual Run**: GitHub Actions workflow run #6 triggered and verified in real time.
+- **Result**:
+  - `Trigger Sync Insights` step completed in 1m 3s with message:
+    `Sync completed successfully with HTTP status code 200`
+  - Workflow status: **SUCCESS (Green Checkmark)**.
 
 ---
 
-## 9. sync_logs Verification
+## 8. sync_logs Verification
 
-The sync execution records each run into Supabase `sync_logs`:
-- **Ad Account ID**: Verified recording for active client accounts.
-- **Records Synced**: Verified upsert of D0 (today), D1 (yesterday), and D2 (two days ago) insights.
-- **Timestamps**: `started_at` and `completed_at` accurately record duration.
-- **Error Logging**: Detailed error captured if an ad account lacks Meta permissions without terminating other accounts.
+The sync execution triggered by GitHub Actions recorded new success entries in Supabase `sync_logs`:
+- **Account `bd8ba346-3569-4c24-a9ff-314577a03adb`**:
+  - D0 (2026-09-14): `status: success`, `records_synced: 1`, completed `2026-09-13T21:53:06.404Z`
+  - D1 (2026-09-13): `status: success`, `records_synced: 1`, completed `2026-09-13T21:53:08.186Z`
+  - D2 (2026-09-12): `status: success`, `records_synced: 0`, completed `2026-09-13T21:53:09.875Z`
+- **Account `298622bb-1e61-4c9e-87ce-8d9ba6728e9f`**:
+  - D0/D1/D2: `status: success`, completed `2026-09-13T21:53:02.698Z`
 
 ---
 
-## 10. Security Verification
+## 9. Security Verification
 
 - [x] Development secret `test_secret_123` removed and rejected.
-- [x] Cryptographically strong 256-bit token generated.
+- [x] Cryptographically strong 256-bit token generated and active.
 - [x] Secret is stored in `.gitignore`'d `.env.local` and never committed to version control.
 - [x] Workflow references secret strictly via `${{ secrets.CRON_SECRET }}` without printing or echoing.
 - [x] Workflow permissions scoped down to `contents: read`.
@@ -168,7 +145,7 @@ The sync execution records each run into Supabase `sync_logs`:
 
 ---
 
-## 11. Final Status
+## 10. Final Status
 
-**READY WITH ONE MANUAL STEP**  
-Application code, endpoint security, concurrency guard, and workflow files are fully prepared and tested. Production execution requires setting the rotated `CRON_SECRET` in Vercel Environment Variables and GitHub Actions Secrets.
+**READY**  
+The entire external hourly synchronization infrastructure is active, verified, and running automatically every hour on the hour via GitHub Actions.

@@ -174,4 +174,33 @@ export class MetaServerClient {
     async getCampaignMetadata(metaAdAccountId: string): Promise<NormalizedCampaignMeta[]> {
         return this.getCampaigns(metaAdAccountId);
     }
+
+    /**
+     * Retrieves the deduplicated period-level reach for a campaign over a specific date window.
+     * Returns null if insights are unavailable or on query failure.
+     */
+    async getCampaignPeriodReach(
+        metaCampaignId: string,
+        timeRange: { since: string; until: string }
+    ): Promise<number | null> {
+        try {
+            const data = await this.fetch(`/${metaCampaignId}/insights`, {
+                fields: 'reach',
+                time_range: JSON.stringify(timeRange)
+            });
+
+            if (data && Array.isArray(data.data)) {
+                if (data.data.length === 0) return 0;
+                const reachVal = data.data[0]?.reach;
+                if (reachVal !== undefined && reachVal !== null) {
+                    const parsed = parseInt(reachVal, 10);
+                    return isNaN(parsed) ? null : parsed;
+                }
+            }
+            return null;
+        } catch (error: any) {
+            console.error(`[MetaServerClient] Failed to fetch period reach for campaign ${metaCampaignId}:`, error.message);
+            return null;
+        }
+    }
 }

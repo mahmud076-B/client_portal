@@ -3,6 +3,7 @@ import DashboardClient from './DashboardClient';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { MetaServerClient } from '@/lib/meta/server/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,16 +65,20 @@ export default async function DashboardPage(
   // Use en-CA for YYYY-MM-DD formatting
   const adminClient = createAdminClient();
   let timezoneName = 'UTC';
+  let organizationId: string | null = null;
   
   if (selectedCampaign?.ad_account_id) {
     const { data: adAccount } = await adminClient
       .from('ad_accounts')
-      .select('timezone_name')
+      .select('organization_id, timezone_name')
       .eq('id', selectedCampaign.ad_account_id)
       .single();
       
     if (adAccount?.timezone_name) {
       timezoneName = adAccount.timezone_name;
+    }
+    if (adAccount?.organization_id) {
+      organizationId = adAccount.organization_id;
     }
   }
   
@@ -111,7 +116,6 @@ export default async function DashboardPage(
   // 5. Aggregations
   let totalSpend = 0;
   let totalImpressions = 0;
-  let totalReach = 0;
   let totalClicks = 0;
   let totalMessagingConversations = 0;
   let totalMessagingCostWeighted = 0;
@@ -120,7 +124,6 @@ export default async function DashboardPage(
     insightsData.forEach(insight => {
       totalSpend += Number(insight.spend || 0);
       totalImpressions += Number(insight.impressions || 0);
-      totalReach += Number(insight.reach || 0);
       totalClicks += Number(insight.clicks || 0);
       
       const msgs = Number(insight.messaging_conversations_started || 0);
@@ -132,12 +135,57 @@ export default async function DashboardPage(
     });
   }
 
-  const avgDailyReach = insightsData && insightsData.length > 0 ? (totalReach / insightsData.length) : 0;
+  // 6. Fetch Period-Level Deduplicated Reach from Meta
+  let periodReach: number | null = null;
+
+  if (selectedCampaign?.meta_campaign_id && organizationId) {
+    try {
+      const { data: conn } = await adminClient
+        .from('meta_connections')
+        .select('encrypted_token, iv, auth_tag')
+        .eq('organization_id', organizationId)
+        .eq('status', 'connected')
+        .single();
+
+      if (conn?.encrypted_token && conn?.iv && conn?.auth_tag) {
+        const metaClient = new MetaServerClient({
+          encryptedToken: conn.encrypted_token,
+          iv: conn.iv,
+          authTag: conn.auth_tag
+        });
+
+        let reachSince = startDate;
+        let reachUntil = endDate;
+
+        if (range === 'maximum') {
+          if (insightsData && insightsData.length > 0) {
+            reachSince = insightsData[0].date;
+            reachUntil = insightsData[insightsData.length - 1].date;
+          } else {
+            reachSince = '';
+            reachUntil = '';
+          }
+        }
+
+        if (reachSince && reachUntil) {
+          periodReach = await metaClient.getCampaignPeriodReach(
+            selectedCampaign.meta_campaign_id,
+            { since: reachSince, until: reachUntil }
+          );
+        } else {
+          periodReach = 0;
+        }
+      }
+    } catch (reachErr: any) {
+      console.error('[Dashboard] Error fetching period reach from Meta:', reachErr.message || reachErr);
+      periodReach = null;
+    }
+  }
 
   const aggregates = {
     spend: totalSpend,
     impressions: totalImpressions,
-    reach: avgDailyReach,
+    reach: periodReach,
     clicks: totalClicks,
     cpc: totalClicks > 0 ? (totalSpend / totalClicks) : 0, 
     cpm: totalImpressions > 0 ? ((totalSpend / totalImpressions) * 1000) : 0,

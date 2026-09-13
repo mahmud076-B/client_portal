@@ -312,12 +312,16 @@ export default function DashboardClient({
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
-              <div className="kpi-label">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Avg Daily Reach
-              </div>
-            <div className="kpi-value">{aggregates?.reach ? Math.round(aggregates.reach).toLocaleString() : '0'}</div>
-            <div className="kpi-subtext">Avg accounts reached per day</div>
+            <div className="kpi-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Total Reach
+            </div>
+            <div className="kpi-value">
+              {aggregates?.reach !== null && aggregates?.reach !== undefined
+                ? Math.round(aggregates.reach).toLocaleString()
+                : 'N/A'}
+            </div>
+            <div className="kpi-subtext">Unique accounts reached</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
