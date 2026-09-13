@@ -58,18 +58,43 @@ export async function inviteClient(formData: FormData) {
       }
     }
 
-    const { data: authData, error: authError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
+    // Vercel Serverless Functions (Hobby) have a strict 10s execution limit.
+    // If Supabase's SMTP delivery takes longer than 10s, Vercel violently kills the process (504 Gateway Timeout),
+    // causing an unhandled promise rejection in the Next.js client.
+    // We use an 8000ms (8s) timeout to gracefully abort and return a serializable error BEFORE Vercel terminates the function.
+    const invitePromise = adminSupabase.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${siteUrl}/auth/callback?next=/invite/accept`,
       data: {
         full_name: contactName,
-        // We do NOT trust role/org_id from auth user metadata for security, 
-        // they are strictly enforced in the public.profiles table.
       }
     });
 
-    if (authError || !authData.user) {
+    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) => {
+      setTimeout(() => reject(new Error('INVITE_TIMEOUT')), 8000);
+    });
+
+    let authData, authError;
+    try {
+      const result = await Promise.race([invitePromise, timeoutPromise]) as { data: any, error: any };
+      authData = result.data;
+      authError = result.error;
+    } catch (e: any) {
+      if (e.message === 'INVITE_TIMEOUT') {
+        console.error("Auth Invite Timeout: Exceeded 8000ms.");
+        return { error: 'Invitation status could not be confirmed. The system took too long to respond. Please check the client list in a few moments before retrying.' };
+      }
+      throw e;
+    }
+
+    if (authError || !authData?.user) {
       console.error("Auth Invite Error:", authError);
-      return { error: 'Failed to send invitation email through Supabase.' };
+      
+      // Handle case where user is already completely registered
+      if (authError?.message?.toLowerCase().includes('already registered')) {
+        return { error: 'This email is already registered in the system.' };
+      }
+      
+      return { error: 'Failed to send invitation email through Supabase. Please try again.' };
     }
 
     const authUserId = authData.user.id;

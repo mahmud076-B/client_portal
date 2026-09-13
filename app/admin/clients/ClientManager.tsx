@@ -16,18 +16,26 @@ export default function ClientManager() {
     setSuccess(null);
 
     const formData = new FormData(e.currentTarget);
-    const result = await inviteClient(formData);
+    
+    try {
+      const result = await inviteClient(formData);
 
-    setLoading(false);
-
-    if (result?.error) {
-      setError(result.error);
-    } else if (result?.success) {
-      setSuccess('Client successfully invited. They will receive an email shortly.');
-      setTimeout(() => {
-        setIsOpen(false);
-        setSuccess(null);
-      }, 2000);
+      if (result?.error) {
+        setError(result.error);
+      } else if (result?.success) {
+        setSuccess('Client successfully invited. They will receive an email shortly.');
+        setTimeout(() => {
+          setIsOpen(false);
+          setSuccess(null);
+        }, 2000);
+      } else {
+        setError("An unexpected response was received.");
+      }
+    } catch (err: any) {
+      console.error("Client Action Error:", err);
+      setError("A network error occurred or the request timed out. Please check the client list before retrying.");
+    } finally {
+      setLoading(false);
     }
   };
 
