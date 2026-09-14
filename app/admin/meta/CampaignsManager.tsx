@@ -124,16 +124,16 @@ export default function CampaignsManager({
                         </div>
                         <ul role="list" className="divide-y divide-gray-100/50">
                             {availableCampaigns.map((campaign) => {
-                                const isRegistered = registeredCampaigns.some(rc => rc.meta_campaign_id === campaign.id);
+                                const isRegistered = registeredCampaigns.some(rc => rc.meta_campaign_id === campaign.meta_campaign_id);
 
                                 return (
-                                    <li key={campaign.id} className="hover:bg-purple-50/20 transition-colors">
+                                    <li key={campaign.meta_campaign_id} className="hover:bg-purple-50/20 transition-colors">
                                         <div className="px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between">
                                             <div className="min-w-0 flex-1">
                                                 <p className="font-bold text-sm text-gray-900 truncate">{campaign.name}</p>
                                                 <div className="mt-2 flex flex-wrap items-center gap-3">
                                                     <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-                                                        {campaign.id}
+                                                        {campaign.meta_campaign_id}
                                                     </span>
                                                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                                                         (campaign.effective_status || campaign.status) === 'ACTIVE' 
@@ -157,11 +157,11 @@ export default function CampaignsManager({
                                                     </span>
                                                 ) : (
                                                     <button
-                                                        onClick={() => handleRegister(campaign.id)}
-                                                        disabled={registering === campaign.id}
+                                                        onClick={() => handleRegister(campaign.meta_campaign_id)}
+                                                        disabled={registering === campaign.meta_campaign_id}
                                                         className="inline-flex items-center px-4 py-2 border border-transparent text-xs font-bold rounded-xl shadow-sm text-white bg-gradient-to-r from-[#6F42C1] to-[#8a5ad9] hover:from-[#5a369e] hover:to-[#7648be] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6F42C1] transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                                                     >
-                                                        {registering === campaign.id ? 'Adding...' : '+ Add to Marketivity'}
+                                                        {registering === campaign.meta_campaign_id ? 'Adding...' : '+ Add to Marketivity'}
                                                     </button>
                                                 )}
                                             </div>
