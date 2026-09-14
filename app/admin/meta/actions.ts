@@ -261,13 +261,13 @@ export async function assignCampaign(localCampaignId: string, localClientId: str
             return { success: false, error: 'The selected client is not available to your organization.' };
         }
 
-        // 2. Verify Campaign belongs to this organization (via Ad Account join in RLS or explicit check)
-        // We do an explicit check to be absolutely safe
+        // 2. Verify Campaign belongs to this organization 
+        // RLS on the campaigns table already enforces that users can only select campaigns
+        // linked to ad_accounts in their organization.
         const { data: campaign, error: campaignError } = await supabase
             .from('campaigns')
-            .select('id, ad_accounts!inner(organization_id)')
+            .select('id')
             .eq('id', localCampaignId)
-            .eq('ad_accounts.organization_id', profile.organization_id)
             .single();
 
         if (campaignError || !campaign) {
