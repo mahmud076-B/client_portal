@@ -245,50 +245,55 @@ export async function registerCampaign(metaCampaignId: string, localAdAccountId:
  * Assigns a registered campaign to a specific client.
  */
 export async function assignCampaign(localCampaignId: string, localClientId: string) {
-    const { profile } = await requireAdmin();
-    const supabase = await createClient();
+    try {
+        const { profile } = await requireAdmin();
+        const supabase = await createClient();
 
-    // 1. Verify Client belongs to this organization
-    const { data: client, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', localClientId)
-        .eq('organization_id', profile.organization_id)
-        .single();
+        // 1. Verify Client belongs to this organization
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('id', localClientId)
+            .eq('organization_id', profile.organization_id)
+            .single();
 
-    if (clientError || !client) {
-        return { success: false, error: 'The selected client is not available to your organization.' };
-    }
-
-    // 2. Verify Campaign belongs to this organization (via Ad Account join in RLS or explicit check)
-    // We do an explicit check to be absolutely safe
-    const { data: campaign, error: campaignError } = await supabase
-        .from('campaigns')
-        .select('id, ad_accounts!inner(organization_id)')
-        .eq('id', localCampaignId)
-        .eq('ad_accounts.organization_id', profile.organization_id)
-        .single();
-
-    if (campaignError || !campaign) {
-        return { success: false, error: 'The selected campaign is not available to your organization.' };
-    }
-
-    // 3. Insert assignment
-    const { error: insertError } = await supabase
-        .from('campaign_assignments')
-        .insert({
-            campaign_id: localCampaignId,
-            client_id: localClientId
-        });
-
-    if (insertError) {
-        console.error('campaign_assignments INSERT error:', insertError);
-        if (insertError.code === '23505') {
-            return { success: false, error: 'This campaign is already assigned to this client.' };
+        if (clientError || !client) {
+            return { success: false, error: 'The selected client is not available to your organization.' };
         }
-        return { success: false, error: 'Failed to assign campaign due to a database error.' };
-    }
 
-    revalidatePath('/admin/meta');
-    return { success: true };
+        // 2. Verify Campaign belongs to this organization (via Ad Account join in RLS or explicit check)
+        // We do an explicit check to be absolutely safe
+        const { data: campaign, error: campaignError } = await supabase
+            .from('campaigns')
+            .select('id, ad_accounts!inner(organization_id)')
+            .eq('id', localCampaignId)
+            .eq('ad_accounts.organization_id', profile.organization_id)
+            .single();
+
+        if (campaignError || !campaign) {
+            return { success: false, error: 'The selected campaign is not available to your organization.' };
+        }
+
+        // 3. Insert assignment
+        const { error: insertError } = await supabase
+            .from('campaign_assignments')
+            .insert({
+                campaign_id: localCampaignId,
+                client_id: localClientId
+            });
+
+        if (insertError) {
+            console.error('campaign_assignments INSERT error:', insertError);
+            if (insertError.code === '23505') {
+                return { success: false, error: 'This campaign is already assigned to this client.' };
+            }
+            return { success: false, error: 'Failed to assign campaign due to a database error.' };
+        }
+
+        revalidatePath('/admin/meta');
+        return { success: true };
+    } catch (error: any) {
+        console.error('assignCampaign Exception:', error);
+        return { success: false, error: error.message || 'An unexpected server error occurred.' };
+    }
 }
