@@ -5,7 +5,7 @@
 The production scheduled sync architecture for Marketivity Client Portal is configured, verified, and operational:
 
 ```text
-GitHub Actions (Hourly Schedule: 0 * * * *)
+GitHub Actions (30-Minute Schedule: 7,37 * * * *)
        │
        ▼  HTTP GET with Authorization: Bearer ${{ secrets.CRON_SECRET }}
 Production Endpoint (https://clientportal.marketivity.agency/api/cron/sync-insights)
@@ -79,10 +79,17 @@ Workflow file: [hourly-meta-sync.yml](file:///d:/ClientPortal/.github/workflows/
 
 ## 5. Workflow Schedule
 
-- **Schedule**: `0 * * * *` (UTC).
-- **Frequency**: Every hour on the hour (24 times per day).
+- **Schedule**: `7,37 * * * *` (UTC).
+- **Frequency**: Every 30 minutes (minute 7 and 37 of every hour, 48 times per day).
 - **Manual Trigger**: `workflow_dispatch` is enabled and verified.
-- **Terminology**: Labeled as "Hourly sync" / "Updated hourly" across the application to reflect Meta API processing and attribution timelines truthfully.
+- **Terminology**: Labeled as "Last synced: <timestamp>" across the application to reflect Meta API processing and attribution timelines truthfully. (Not "Real-time").
+
+## 30-Minute Sync Schedule
+
+Schedule:
+`7,37 * * * *`
+
+GitHub Actions runs twice per hour. The exact execution time may occasionally be delayed under GitHub Actions load.
 
 ---
 
