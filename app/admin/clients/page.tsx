@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import ClientManager from './ClientManager';
+import ClientActions from './ClientActions';
 
 export const metadata = {
   title: 'Client Management — Marketivity',
@@ -21,7 +22,8 @@ export default async function ClientsPage() {
       email,
       status,
       created_at,
-      campaign_assignments ( count )
+      campaign_assignments ( count ),
+      profiles ( id )
     `)
     .eq('organization_id', profile.organization_id)
     .order('created_at', { ascending: false });
@@ -51,6 +53,24 @@ export default async function ClientsPage() {
          clientSpendMap[a.client_id] = (clientSpendMap[a.client_id] || 0) + (campaignSpendMap[a.campaign_id] || 0);
      });
   }
+
+  // 4. Fetch all available campaigns and detailed assignments for Management
+  const { data: allCampaigns } = await supabase
+    .from('campaigns')
+    .select('id, name, status, ad_accounts!inner(organization_id)')
+    .eq('ad_accounts.organization_id', profile.organization_id)
+    .order('name');
+
+  const { data: assignmentsList } = await supabase
+    .from('campaign_assignments')
+    .select(`
+      client_id, 
+      campaign_id, 
+      created_at, 
+      campaigns!inner(name, status, meta_campaign_id),
+      clients!inner(organization_id)
+    `)
+    .eq('clients.organization_id', profile.organization_id);
 
   return (
     <div style={{ padding: '2rem' }}>
@@ -87,40 +107,56 @@ export default async function ClientsPage() {
                 <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
                 <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Campaigns</th>
                 <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Spend</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Added On</th>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
-                <tr key={client.id} style={{ borderBottom: '1px solid var(--c100)' }}>
-                  <td style={{ padding: '1.25rem 1.5rem' }}>
-                    <div style={{ fontWeight: 600, color: 'var(--c900)', fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{client.company_name}</div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--c500)' }}>{client.name}</div>
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
-                    {client.email}
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem' }}>
-                    <span style={{ 
-                      display: 'inline-flex', alignItems: 'center', 
-                      background: client.status === 'active' ? '#ECFDF5' : '#F3F4F6', 
-                      color: client.status === 'active' ? '#047857' : '#4B5563', 
-                      padding: '0.25rem 0.625rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 600 
-                    }}>
-                      {client.status === 'active' ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
-                    {client.campaign_assignments?.[0]?.count || 0}
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c900)', fontWeight: 500 }}>
-                    ${(clientSpendMap[client.id] || 0).toFixed(2)}
-                  </td>
-                  <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c500)' }}>
-                    {new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </td>
-                </tr>
-              ))}
+              {clients.map((client) => {
+                const isOrphan = !client.profiles || client.profiles.length === 0;
+                const clientAssignments = (assignmentsList || []).filter(a => a.client_id === client.id);
+
+                return (
+                  <tr key={client.id} style={{ borderBottom: '1px solid var(--c100)' }}>
+                    <td style={{ padding: '1.25rem 1.5rem' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--c900)', fontSize: '0.9375rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {client.company_name}
+                        {isOrphan && (
+                          <span style={{ background: '#FEF2F2', color: '#B91C1C', fontSize: '0.625rem', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontWeight: 700 }}>ORPHANED</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--c500)' }}>{client.name}</div>
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
+                      {client.email}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem' }}>
+                      <span style={{ 
+                        display: 'inline-flex', alignItems: 'center', 
+                        background: client.status === 'active' ? '#ECFDF5' : '#F3F4F6', 
+                        color: client.status === 'active' ? '#047857' : '#4B5563', 
+                        padding: '0.25rem 0.625rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 600 
+                      }}>
+                        {client.status === 'active' ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
+                      {client.campaign_assignments?.[0]?.count || 0}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c900)', fontWeight: 500 }}>
+                      ${(clientSpendMap[client.id] || 0).toFixed(2)}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
+                      <ClientActions 
+                        clientId={client.id}
+                        clientName={client.company_name || client.name}
+                        isOrphan={isOrphan}
+                        allCampaigns={allCampaigns || []}
+                        clientAssignments={clientAssignments as any}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

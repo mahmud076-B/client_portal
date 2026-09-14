@@ -162,3 +162,153 @@ export async function inviteClient(formData: FormData) {
     return { error: 'An unexpected server error occurred.' };
   }
 }
+
+export async function removeClient(clientId: string) {
+  try {
+    const { profile: adminProfile } = await requireAdmin();
+    const organizationId = adminProfile.organization_id;
+
+    if (!organizationId) throw new Error("Admin profile is missing an organization_id.");
+
+    const adminSupabase = createAdminClient();
+
+    // 1. Verify client belongs to Admin's organization
+    const { data: client, error: fetchError } = await adminSupabase
+      .from('clients')
+      .select('id')
+      .eq('id', clientId)
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (fetchError || !client) {
+      return { error: 'Client not found or you do not have permission to delete it.' };
+    }
+
+    // 2. Safely find the associated auth_user_id from profiles
+    const { data: profile } = await adminSupabase
+      .from('profiles')
+      .select('auth_user_id')
+      .eq('client_id', clientId)
+      .eq('organization_id', organizationId)
+      .single();
+
+    // 3. Delete the Auth User (if it exists)
+    if (profile && profile.auth_user_id) {
+      const { error: authDeleteError } = await adminSupabase.auth.admin.deleteUser(profile.auth_user_id);
+      if (authDeleteError) {
+        console.error("Auth User Deletion Error:", authDeleteError);
+        // Continue deleting the client row even if Auth delete fails (e.g., if already missing)
+      }
+    }
+
+    // 4. Delete the public.clients record. 
+    // This will CASCADE and securely delete campaign_assignments and profiles.
+    const { error: clientDeleteError } = await adminSupabase
+      .from('clients')
+      .delete()
+      .eq('id', clientId)
+      .eq('organization_id', organizationId);
+
+    if (clientDeleteError) {
+      console.error("Client Deletion Error:", clientDeleteError);
+      return { error: 'Failed to delete client record from the database.' };
+    }
+
+    revalidatePath('/admin/clients');
+    return { success: true };
+  } catch (error: any) {
+    console.error("Remove Client Exception:", error);
+    return { error: 'An unexpected server error occurred during deletion.' };
+  }
+}
+
+export async function assignCampaign(clientId: string, campaignId: string) {
+  try {
+    const { profile: adminProfile } = await requireAdmin();
+    const organizationId = adminProfile.organization_id;
+
+    if (!organizationId) throw new Error("Admin profile is missing an organization_id.");
+
+    const adminSupabase = createAdminClient();
+
+    // 1. Verify target client belongs to Admin's organization
+    const { data: client, error: clientError } = await adminSupabase
+      .from('clients')
+      .select('id')
+      .eq('id', clientId)
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (clientError || !client) return { error: 'Invalid client.' };
+
+    // 2. Verify target campaign belongs to an ad account in Admin's organization
+    const { data: campaign, error: campaignError } = await adminSupabase
+      .from('campaigns')
+      .select('id, ad_accounts!inner(organization_id)')
+      .eq('id', campaignId)
+      .eq('ad_accounts.organization_id', organizationId)
+      .single();
+
+    if (campaignError || !campaign) return { error: 'Invalid campaign or unauthorized.' };
+
+    // 3. Insert the assignment
+    const { error: insertError } = await adminSupabase
+      .from('campaign_assignments')
+      .insert({
+        client_id: clientId,
+        campaign_id: campaignId
+      });
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return { error: 'This campaign is already assigned to this client.' };
+      }
+      console.error("Assign Campaign Error:", insertError);
+      return { error: 'Failed to assign campaign.' };
+    }
+
+    revalidatePath('/admin/clients');
+    return { success: true };
+  } catch (error: any) {
+    console.error("Assign Campaign Exception:", error);
+    return { error: 'An unexpected server error occurred.' };
+  }
+}
+
+export async function removeAssignment(clientId: string, campaignId: string) {
+  try {
+    const { profile: adminProfile } = await requireAdmin();
+    const organizationId = adminProfile.organization_id;
+
+    if (!organizationId) throw new Error("Admin profile is missing an organization_id.");
+
+    const adminSupabase = createAdminClient();
+
+    // We must ensure the assignment we are deleting belongs to a client in this organization
+    const { data: client, error: clientError } = await adminSupabase
+      .from('clients')
+      .select('id')
+      .eq('id', clientId)
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (clientError || !client) return { error: 'Invalid client.' };
+
+    const { error: deleteError } = await adminSupabase
+      .from('campaign_assignments')
+      .delete()
+      .eq('client_id', clientId)
+      .eq('campaign_id', campaignId);
+
+    if (deleteError) {
+      console.error("Remove Assignment Error:", deleteError);
+      return { error: 'Failed to remove campaign assignment.' };
+    }
+
+    revalidatePath('/admin/clients');
+    return { success: true };
+  } catch (error: any) {
+    console.error("Remove Assignment Exception:", error);
+    return { error: 'An unexpected server error occurred.' };
+  }
+}
