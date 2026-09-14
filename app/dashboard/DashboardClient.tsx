@@ -344,16 +344,19 @@ export default function DashboardClient({
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
-            <div className="kpi-label">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Total Reach
+            <div className="kpi-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Total Reach
+              </span>
+              <span style={{ fontSize: '9px', fontWeight: 'bold', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px' }}>LIVE</span>
             </div>
             <div className="kpi-value">
               {aggregates?.reach !== null && aggregates?.reach !== undefined
                 ? Math.round(aggregates.reach).toLocaleString()
                 : 'N/A'}
             </div>
-            <div className="kpi-subtext">Unique accounts reached</div>
+            <div className="kpi-subtext">Unique accounts (Fetched live from Meta)</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
