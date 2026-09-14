@@ -152,15 +152,54 @@ export class MetaServerClient {
                 ? metaAdAccountId
                 : `act_${metaAdAccountId}`;
 
-            const data = await this.fetch(`/${accountIdStr}/campaigns`, {
+            let campaigns: NormalizedCampaignMeta[] = [];
+            let nextEndpoint: string | null = `/${accountIdStr}/campaigns`;
+            let currentParams: Record<string, string> | undefined = {
                 fields: 'id,name,status,effective_status,objective,buying_type,account_id,daily_budget,lifetime_budget,start_time,stop_time'
-            });
+            };
 
-            if (!data || !Array.isArray(data.data)) {
-                return [];
+            let pageCount = 0;
+            const MAX_PAGES = 50;
+
+            while (nextEndpoint && pageCount < MAX_PAGES) {
+                pageCount++;
+                let urlToFetch = nextEndpoint;
+                let paramsToPass = currentParams;
+
+                let isAbsolute = urlToFetch.startsWith('http');
+                let responseData;
+
+                if (isAbsolute) {
+                    const urlObj = new URL(urlToFetch);
+                    const parsedParams: Record<string, string> = {};
+                    urlObj.searchParams.forEach((val, key) => {
+                        if (key !== 'access_token') {
+                            parsedParams[key] = val;
+                        }
+                    });
+                    responseData = await this.fetch(urlObj.pathname.replace(`/${META_GRAPH_API_VERSION}`, ''), parsedParams);
+                } else {
+                    responseData = await this.fetch(urlToFetch, paramsToPass || {});
+                }
+
+                if (responseData && Array.isArray(responseData.data)) {
+                    campaigns.push(...responseData.data.map(normalizeCampaignMeta));
+                }
+
+                const nextUrl = responseData?.paging?.next;
+                if (nextUrl) {
+                    nextEndpoint = nextUrl;
+                    currentParams = undefined;
+                } else {
+                    nextEndpoint = null;
+                }
             }
 
-            return data.data.map(normalizeCampaignMeta);
+            if (pageCount >= MAX_PAGES) {
+                throw new Error(`[MetaServerClient] Reached maximum pagination limit of ${MAX_PAGES} for campaigns on ${accountIdStr}. Aborting to prevent partial data sync.`);
+            }
+
+            return campaigns;
         } catch (error: any) {
             throw new Error(`Failed to retrieve Campaigns: ${error.message}`);
         }

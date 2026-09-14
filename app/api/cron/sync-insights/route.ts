@@ -117,14 +117,51 @@ export async function GET(request: Request) {
 
                             if (noDaily && noLifetime) {
                                 try {
-                                    // Fetch Ad Sets to aggregate active budgets
-                                    const adSetsData = await metaClient.fetch(`/${adAccount.meta_ad_account_id}/adsets`, {
+                                    // Fetch Ad Sets to aggregate active budgets with pagination
+                                    let allAdSets: any[] = [];
+                                    let nextAdSetEndpoint: string | null = `/${adAccount.meta_ad_account_id}/adsets`;
+                                    let currentAdSetParams: Record<string, string> | undefined = {
                                         fields: 'id,campaign_id,name,status,daily_budget,lifetime_budget'
-                                    });
+                                    };
+                                    let adSetPageCount = 0;
+                                    const MAX_ADSET_PAGES = 50;
 
-                                    if (adSetsData && Array.isArray(adSetsData.data)) {
+                                    while (nextAdSetEndpoint && adSetPageCount < MAX_ADSET_PAGES) {
+                                        adSetPageCount++;
+                                        let isAbsolute = nextAdSetEndpoint.startsWith('http');
+                                        let responseData;
+                                        if (isAbsolute) {
+                                            const urlObj = new URL(nextAdSetEndpoint);
+                                            const parsedParams: Record<string, string> = {};
+                                            urlObj.searchParams.forEach((val, key) => {
+                                                if (key !== 'access_token') parsedParams[key] = val;
+                                            });
+                                            const pathname = urlObj.pathname.replace(/\/v\d+\.\d+/, '');
+                                            responseData = await metaClient.fetch(pathname, parsedParams);
+                                        } else {
+                                            responseData = await metaClient.fetch(nextAdSetEndpoint, currentAdSetParams || {});
+                                        }
+
+                                        if (responseData && Array.isArray(responseData.data)) {
+                                            allAdSets.push(...responseData.data);
+                                        }
+
+                                        const nextUrl = responseData?.paging?.next;
+                                        if (nextUrl) {
+                                            nextAdSetEndpoint = nextUrl;
+                                            currentAdSetParams = undefined;
+                                        } else {
+                                            nextAdSetEndpoint = null;
+                                        }
+                                    }
+
+                                    if (adSetPageCount >= MAX_ADSET_PAGES) {
+                                        throw new Error(`[MetadataRefresh] Reached max pagination for adsets on ${internalId}. Aborting to prevent partial data sync.`);
+                                    }
+
+                                    if (allAdSets.length > 0) {
                                         // Filter to only ACTIVE ad sets for this specific campaign
-                                        const campaignAdSets = adSetsData.data.filter((adset: any) => 
+                                        const campaignAdSets = allAdSets.filter((adset: any) => 
                                             adset.campaign_id === metaCampaign.meta_campaign_id && 
                                             adset.status === 'ACTIVE'
                                         );
@@ -152,7 +189,9 @@ export async function GET(request: Request) {
                                         }
                                     }
                                 } catch (abErr) {
-                                    console.warn(`[MetadataRefresh] Failed to fetch ad sets for ABO aggregation on campaign ${internalId}:`, abErr);
+                                    console.error(`[MetadataRefresh] Failed to fetch ad sets for ABO aggregation on campaign ${internalId}:`, abErr);
+                                    // Re-throw to prevent partial data sync for this account
+                                    throw abErr;
                                 }
                             }
 
@@ -225,23 +264,40 @@ export async function GET(request: Request) {
                         targetDates.push(specificDate);
                     } else {
                         // Calculate D-0, D-1 and D-2 in the ad account's timezone
-                        const localDateString = new Date().toLocaleString('en-US', { timeZone: tz });
-                        const d0 = new Date(localDateString);
-                        const d1 = new Date(localDateString);
-                        d1.setDate(d1.getDate() - 1);
-                        const d2 = new Date(localDateString);
-                        d2.setDate(d2.getDate() - 2);
+                        const formatter = new Intl.DateTimeFormat('en-CA', {
+                            timeZone: tz,
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                        });
 
-                        const format = (d: Date) => {
-                            const y = d.getFullYear();
-                            const m = String(d.getMonth() + 1).padStart(2, '0');
-                            const day = String(d.getDate()).padStart(2, '0');
-                            return `${y}-${m}-${day}`;
+                        const now = new Date();
+                        const d0Str = formatter.format(now);
+                        
+                        const [yStr, mStr, dayStr] = d0Str.split('-');
+                        const y = parseInt(yStr, 10);
+                        const m = parseInt(mStr, 10) - 1; // 0-indexed month
+                        const d = parseInt(dayStr, 10);
+                        
+                        // Use UTC to perform safe calendar arithmetic without server timezone interference
+                        const baseDate = new Date(Date.UTC(y, m, d));
+                        
+                        const formatCanonical = (dateObj: Date) => {
+                            const yy = dateObj.getUTCFullYear();
+                            const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                            const dd = String(dateObj.getUTCDate()).padStart(2, '0');
+                            return `${yy}-${mm}-${dd}`;
                         };
-
-                        targetDates.push(format(d0));
-                        targetDates.push(format(d1));
-                        targetDates.push(format(d2));
+                        
+                        targetDates.push(formatCanonical(baseDate)); // D0
+                        
+                        const d1Date = new Date(baseDate.getTime());
+                        d1Date.setUTCDate(d1Date.getUTCDate() - 1);
+                        targetDates.push(formatCanonical(d1Date)); // D1
+                        
+                        const d2Date = new Date(baseDate.getTime());
+                        d2Date.setUTCDate(d2Date.getUTCDate() - 2);
+                        targetDates.push(formatCanonical(d2Date)); // D2
                     }
 
                     for (const targetDate of targetDates) {
