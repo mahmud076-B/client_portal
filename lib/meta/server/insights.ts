@@ -13,6 +13,12 @@ export interface NormalizedCampaignInsight {
     ctr: number | null;
     messaging_conversations_started: number;
     cost_per_messaging_conversation: number | null;
+    /** Raw Meta arrays kept so the UI can compute the objective-specific "Result". */
+    actions: any[] | null;
+    action_values: any[] | null;
+    cost_per_action_type: any[] | null;
+    video_thruplays: number | null;
+    frequency: number | null;
 }
 
 export class MetaInsightsClient {
@@ -32,6 +38,15 @@ export class MetaInsightsClient {
         if (isNaN(parsed)) return null;
         
         return parsed;
+    }
+
+    /** Sums an AdsActionStats array (e.g. video_thruplay_watched_actions). Missing → 0 (row exists = delivered). */
+    private sumActionValues(list: any): number {
+        if (!Array.isArray(list)) return 0;
+        return list.reduce((sum: number, a: any) => {
+            const n = parseFloat(a?.value);
+            return isNaN(n) ? sum : sum + n;
+        }, 0);
     }
 
     /**
@@ -78,7 +93,7 @@ export class MetaInsightsClient {
         
         const initialParams = {
             level: 'campaign',
-            fields: 'campaign_id,impressions,reach,clicks,spend,cpc,cpm,ctr,actions,cost_per_action_type',
+            fields: 'campaign_id,impressions,reach,frequency,clicks,spend,cpc,cpm,ctr,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
             time_range: JSON.stringify(timeRange)
         };
 
@@ -139,7 +154,12 @@ export class MetaInsightsClient {
                             cpm: this.parseNumeric(row.cpm),
                             ctr: this.parseNumeric(row.ctr),
                             messaging_conversations_started: messagingMetrics.messaging_conversations_started,
-                            cost_per_messaging_conversation: messagingMetrics.cost_per_messaging_conversation
+                            cost_per_messaging_conversation: messagingMetrics.cost_per_messaging_conversation,
+                            actions: Array.isArray(row.actions) ? row.actions : [],
+                            action_values: Array.isArray(row.action_values) ? row.action_values : [],
+                            cost_per_action_type: Array.isArray(row.cost_per_action_type) ? row.cost_per_action_type : [],
+                            video_thruplays: this.sumActionValues(row.video_thruplay_watched_actions),
+                            frequency: this.parseNumeric(row.frequency)
                         };
                         
                         insights.push(normalizedRow);

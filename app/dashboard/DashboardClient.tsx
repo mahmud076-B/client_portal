@@ -7,6 +7,48 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Chart from 'chart.js/auto';
 
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
+import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
+
+/** Greeting by hour: morning 5–11:59, noon 12–13:59, afternoon 14–16:59, evening 17–20:59, night 21–4:59. */
+function greetingForHour(hour: number): string {
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 14) return 'Good noon';
+  if (hour >= 14 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
+function dhakaHour(date: Date): number {
+  return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dhaka' }).format(date)) % 24;
+}
+
+/**
+ * Server render uses Asia/Dhaka; after mount it switches to the viewer's own clock and refreshes every minute.
+ * The heading carries suppressHydrationWarning for the (expected) server/client text difference.
+ */
+function useGreeting(): string {
+  const [greeting, setGreeting] = useState(() => greetingForHour(dhakaHour(new Date())));
+  useEffect(() => {
+    const update = () => {
+      const local = new Date().getHours();
+      setGreeting(greetingForHour(Number.isFinite(local) ? local : dhakaHour(new Date())));
+    };
+    update();
+    const id = window.setInterval(update, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return greeting;
+}
+
+function StatusBadge({ status }: { status: DeliveryStatus }) {
+  return (
+    <span className={`dstatus tone-${status.tone} ${status.isLive ? 'is-live' : ''}`} title={status.description}>
+      <span className="dstatus-dot" />{status.label}
+    </span>
+  );
+}
+
+const fmtMoney = (n: number | null | undefined) => (n == null ? 'N/A' : `$${n.toFixed(2)}`);
 
 export default function DashboardClient({
   profile,
@@ -34,6 +76,11 @@ export default function DashboardClient({
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const greeting = useGreeting();
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
+  const delivery = deriveDeliveryStatus(selectedCampaign || {});
+  const result = aggregates?.result ?? null;
+  const resultLabel: string = result?.spec?.label ?? 'Results';
 
   // Close sidebar on Escape key
   useEffect(() => {
@@ -101,7 +148,8 @@ export default function DashboardClient({
       return `${d.getMonth() + 1}/${d.getDate()}`;
     });
 
-    const msgData = insights.map((i: any) => i.messaging_conversations_started || 0);
+    const resultByDate = new Map<string, number>((result?.daily ?? []).map((d: any) => [d.date, d.value]));
+    const msgData = insights.map((i: any) => resultByDate.get(i.date) ?? 0);
     const spendData = insights.map((i: any) => Number(i.spend || 0));
 
     chartInstance.current = new Chart(chartRef.current, {
@@ -110,7 +158,7 @@ export default function DashboardClient({
         labels,
         datasets: [
           {
-            label: 'Conversations',
+            label: resultLabel,
             data: msgData,
             borderColor: '#22C55E',
             backgroundColor: 'rgba(34, 197, 94, 0.1)',
@@ -141,7 +189,7 @@ export default function DashboardClient({
             type: 'linear',
             display: true,
             position: 'left',
-            title: { display: true, text: 'Conversations' },
+            title: { display: true, text: resultLabel },
             min: 0,
             ticks: { precision: 0 }
           },
@@ -162,7 +210,7 @@ export default function DashboardClient({
         chartInstance.current.destroy();
       }
     };
-  }, [insights]);
+  }, [insights, result, resultLabel]);
 
   return (
     <>
@@ -274,14 +322,14 @@ export default function DashboardClient({
 
       <div className="dash-header fade-up">
         <div>
-          <h1 className="dash-greeting">Good evening, {profile?.full_name?.split(' ')[0] || 'Client'}.</h1>
+          <h1 className="dash-greeting" suppressHydrationWarning>
+            {`${greeting}, ${firstName}.`}
+          </h1>
           <p className="dash-sub">Here's how your campaign is performing right now.</p>
         </div>
         <div>
-          <div className={`status-live ${selectedCampaign?.status === 'ACTIVE' ? '' : 'paused'}`}>
-            <span className="live-dot"></span>{selectedCampaign?.status || 'UNKNOWN'}
-          </div>
-          <div>Campaign is currently {selectedCampaign?.status?.toLowerCase() || 'unknown'}</div>
+          <StatusBadge status={delivery} />
+          <div style={{ marginTop: 6, fontSize: '.8125rem', color: 'var(--c500)' }}>{delivery.description}</div>
         </div>
       </div>
 
@@ -301,14 +349,12 @@ export default function DashboardClient({
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
           <div className="selector-label">Status</div>
-          <div>
-            {selectedCampaign?.status || 'Unknown'}
-          </div>
+          <div><StatusBadge status={delivery} /></div>
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
           <div className="selector-label">Objective</div>
-          <div className="selector-val">{selectedCampaign?.objective || 'Not Set'}</div>
+          <div className="selector-val">{objectiveLabel(selectedCampaign?.objective)}</div>
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
@@ -371,19 +417,23 @@ export default function DashboardClient({
             <div className="kpi-card-accent"></div>
             <div className="kpi-label">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Results (Conversations)
+              Results · {resultLabel}
             </div>
-            <div className="kpi-value">{aggregates?.messaging_conversations?.toLocaleString() || '0'}</div>
-            <div className="kpi-subtext">Messaging conversations started</div>
+            <div className="kpi-value">{result?.total != null ? Math.round(result.total).toLocaleString() : '—'}</div>
+            <div className="kpi-subtext">
+              {result?.pendingResync
+                ? <span className="kpi-pending">Available after the next full data sync</span>
+                : resultLabel}
+            </div>
           </div>
           <div className="kpi-card purple">
             <div className="kpi-card-accent"></div>
             <div className="kpi-label">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6F42C1" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Cost per Conv.
+              {result?.spec?.costLabel ?? 'Cost per result'}
             </div>
-            <div className="kpi-value">{aggregates?.cost_per_messaging_conversation != null ? `$${aggregates.cost_per_messaging_conversation.toFixed(2)}` : 'N/A'}</div>
-            <div className="kpi-subtext">Avg cost per conversation</div>
+            <div className="kpi-value">{fmtMoney(result?.costPerResult)}</div>
+            <div className="kpi-subtext">{result?.spec?.costPerThousand ? 'Per 1,000' : 'Average'} · selected period</div>
           </div>
         </div>
 
@@ -393,17 +443,29 @@ export default function DashboardClient({
             <div className="kpi-sm-value">{aggregates?.ctr?.toFixed(2) || '0.00'}%</div>
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPA (Msg)</div>
-            <div className="kpi-sm-value">{aggregates?.cost_per_messaging_conversation != null ? `$${aggregates.cost_per_messaging_conversation.toFixed(2)}` : 'N/A'}</div>
+            <div className="kpi-sm-label">CPC</div>
+            <div className="kpi-sm-value">{fmtMoney(aggregates?.cpc)}</div>
           </div>
           <div className="kpi-card-sm">
             <div className="kpi-sm-label">CPM</div>
             <div className="kpi-sm-value">${aggregates?.cpm?.toFixed(2) || '0.00'}</div>
           </div>
-          <div className="kpi-card-sm kpi-card-placeholder" style={{ visibility: 'hidden' }}>
-            <div className="kpi-sm-label">Frequency</div>
-            <div className="kpi-sm-value">0.00</div>
-          </div>
+          {result?.spec?.valueTypes ? (
+            <div className="kpi-card-sm">
+              <div className="kpi-sm-label">ROAS</div>
+              <div className="kpi-sm-value">
+                {result.roas != null ? `${result.roas.toFixed(2)}x` : 'N/A'}
+                {result.purchaseValue != null && <span style={{ display: 'block', fontSize: '.7rem', fontWeight: 500, color: 'var(--c500)' }}>{fmtMoney(result.purchaseValue)} value</span>}
+              </div>
+            </div>
+          ) : (
+            <div className="kpi-card-sm">
+              <div className="kpi-sm-label">Frequency</div>
+              <div className="kpi-sm-value">
+                {aggregates?.reach && aggregates?.impressions ? (aggregates.impressions / aggregates.reach).toFixed(2) : 'N/A'}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -416,7 +478,7 @@ export default function DashboardClient({
             </div>
           </div>
           <div className="chart-tabs">
-            <button className="chart-tab active" data-chart="results">Results</button>
+            <button className="chart-tab active" data-chart="results">{resultLabel}</button>
           </div>
         </div>
         <div className="chart-wrapper">
@@ -444,15 +506,14 @@ export default function DashboardClient({
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--c600)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
             </div>
-            <div className={`status-indicator ${selectedCampaign?.status === 'ACTIVE' ? 'si-live' : ''}`}>
-              {selectedCampaign?.status === 'ACTIVE' ? <span className="si-dot"></span> : null} {selectedCampaign?.status || 'UNKNOWN'}
-            </div>
-            <p className="status-description">Live campaign details synced directly from Meta.</p>
+            <div style={{ marginBottom: '1.25rem' }}><StatusBadge status={delivery} /></div>
+            <p className="status-description">{delivery.description}</p>
             <div className="status-details">
               <div className="detail-row"><span className="detail-key">Campaign Name</span><span className="detail-val">{selectedCampaign?.name || 'No Name'}</span></div>
-              <div className="detail-row"><span className="detail-key">Status</span><span className="detail-val">{selectedCampaign?.effective_status || selectedCampaign?.status || 'Unknown'}</span></div>
-              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">{selectedCampaign?.objective || 'Not Set'}</span></div>
+              <div className="detail-row"><span className="detail-key">Status</span><span className="detail-val">{delivery.label}</span></div>
+              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">{objectiveLabel(selectedCampaign?.objective)}</span></div>
               <div className="detail-row"><span className="detail-key">Started</span><span className="detail-val">{selectedCampaign?.start_time ? new Date(selectedCampaign.start_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</span></div>
+              <div className="detail-row"><span className="detail-key">Result metric</span><span className="detail-val">{resultLabel}</span></div>
               <div className="detail-row"><span className="detail-key">End Date</span><span className="detail-val">{selectedCampaign?.end_time ? new Date(selectedCampaign.end_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Ongoing'}</span></div>
               {selectedCampaign?.daily_budget != null && (
                 <div className="detail-row">
@@ -494,7 +555,7 @@ export default function DashboardClient({
             </div>
             <div className="detail-row"><span className="detail-key">Client</span><span className="detail-val">{client?.name || 'Marketivity Client'}</span></div>
             <div className="detail-row"><span className="detail-key">Account Manager</span><span className="detail-val">Marketivity Team</span></div>
-            <div className="detail-row"><span className="detail-key">Active Campaigns</span><span className="detail-val detail-val-orange">{campaigns.filter((c: any) => c.status === 'ACTIVE' || c.effective_status === 'ACTIVE').length}</span></div>
+            <div className="detail-row"><span className="detail-key">Active Campaigns</span><span className="detail-val detail-val-orange">{campaigns.filter((c: any) => deriveDeliveryStatus(c).isLive).length}</span></div>
             <div className="detail-row"><span className="detail-key">Portal Access</span><span className="detail-val">Active</span></div>
             <div className="detail-row">
               <a href="mailto:hello@marketivity.com">
