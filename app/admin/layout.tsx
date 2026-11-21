@@ -2,6 +2,7 @@ import '@/app/dashboard/dashboard.css';
 import { requireAdmin } from '@/lib/supabase/auth';
 import { redirect } from 'next/navigation';
 import AdminSidebar from './AdminSidebar';
+import AssistantMount from '@/components/ai/AssistantMount';
 
 export default async function AdminLayout({
   children,
@@ -39,6 +40,7 @@ export default async function AdminLayout({
           {children}
         </main>
       </div>
+      <AssistantMount />
     </>
   );
 }

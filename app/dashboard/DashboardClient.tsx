@@ -7,6 +7,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Chart from 'chart.js/auto';
 
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
+import LiveUpdates from '@/components/events/LiveUpdates';
 
 export default function DashboardClient({
   profile,
@@ -486,7 +487,7 @@ export default function DashboardClient({
 
         <div className="col-right">
           
-          {/* Future slot: Updates and Recommendations */}
+          <LiveUpdates campaignId={selectedCampaign?.id ?? null} />
 
           <div className="activity-card fade-up">
             <div className="card-title">

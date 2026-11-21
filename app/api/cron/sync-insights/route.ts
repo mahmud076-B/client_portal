@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
+import { recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for syncing
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
                 // Fetch ad accounts for this organization
                 const { data: adAccounts, error: adError } = await supabase
                     .from('ad_accounts')
-                    .select('id, meta_ad_account_id, status, timezone_name')
+                    .select('id, meta_ad_account_id, status, timezone_name, currency')
                     .eq('organization_id', conn.organization_id)
                     .eq('status', 'active');
 
@@ -69,6 +70,9 @@ export async function GET(request: Request) {
                     if (adAccount.status !== 'active') continue;
 
                     if (connectionHasTokenError) break;
+
+                    // Snapshot for the Live Updates feed (never throws).
+                    const eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
 
                     // ============================================================
                     // STEP A: CAMPAIGN METADATA REFRESH (isolated — never skips insights)
@@ -425,6 +429,19 @@ export async function GET(request: Request) {
                             if (connectionHasTokenError) {
                                 break;
                             }
+                        }
+                    }
+
+                    // Live Updates feed: diff before/after this account's sync.
+                    if (!connectionHasTokenError) {
+                        const eventsWritten = await recordCampaignEvents(supabase, {
+                            organizationId: conn.organization_id,
+                            adAccountId: adAccount.id,
+                            before: eventsBefore,
+                            currency: adAccount.currency ?? null,
+                        });
+                        if (eventsWritten > 0) {
+                            syncResults.push({ account: adAccount.meta_ad_account_id, type: 'campaign_events', events: eventsWritten });
                         }
                     }
                 }
