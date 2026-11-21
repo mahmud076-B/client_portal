@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
 import { recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
+import { findInsightGap, isIsoDay } from '@/lib/meta/server/backfill';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for syncing
@@ -26,6 +27,10 @@ export async function GET(request: Request) {
 
         const url = new URL(request.url);
         const specificDate = url.searchParams.get('date');
+        // Optional manual backfill: ?since=YYYY-MM-DD&until=YYYY-MM-DD (one ranged Meta call per account).
+        const rangeSince = url.searchParams.get('since');
+        const rangeUntil = url.searchParams.get('until');
+        const manualRange = isIsoDay(rangeSince) && isIsoDay(rangeUntil) && rangeSince <= rangeUntil ? `${rangeSince}..${rangeUntil}` : null;
 
         const supabase = createAdminClient();
 
@@ -293,8 +298,11 @@ export async function GET(request: Request) {
                     // ============================================================
                     const tz = adAccount.timezone_name || 'UTC';
 
+                    // Entries are a single day "YYYY-MM-DD" or a range "YYYY-MM-DD..YYYY-MM-DD".
                     let targetDates: string[] = [];
-                    if (specificDate) {
+                    if (manualRange) {
+                        targetDates.push(manualRange);
+                    } else if (specificDate) {
                         targetDates.push(specificDate);
                     } else {
                         // Calculate D-0, D-1 and D-2 in the ad account's timezone
@@ -334,7 +342,19 @@ export async function GET(request: Request) {
                         targetDates.push(formatCanonical(d2Date)); // D2
                     }
 
+                    // Auto-backfill days missing for live campaigns (e.g. while the token was expired),
+                    // otherwise lifetime spend/results stay below Ads Manager forever.
+                    if (!manualRange && !specificDate) {
+                        try {
+                            const gap = await findInsightGap(supabase, { adAccountId: adAccount.id, timeZone: tz });
+                            if (gap) targetDates.push(`${gap.since}..${gap.until}`);
+                        } catch (gapErr: any) {
+                            console.warn(`[Sync] gap check failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
+                        }
+                    }
+
                     for (const targetDate of targetDates) {
+                        const [rangeStart, rangeEnd] = targetDate.includes('..') ? targetDate.split('..') : [targetDate, targetDate];
                         const syncStartedAt = new Date().toISOString();
 
                         try {
@@ -347,8 +367,8 @@ export async function GET(request: Request) {
                             while (retryCount <= maxRetries) {
                                 try {
                                     insights = await insightsClient.getDailyCampaignInsights(adAccount.meta_ad_account_id, {
-                                        since: targetDate,
-                                        until: targetDate
+                                        since: rangeStart,
+                                        until: rangeEnd
                                     });
                                     lastError = null;
                                     break;

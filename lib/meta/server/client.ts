@@ -68,6 +68,27 @@ function normalizeCampaignMeta(raw: any): NormalizedCampaignMeta {
     };
 }
 
+/** Every campaign effective_status the account /campaigns edge accepts as a filter (DELETED is not allowed). */
+const CAMPAIGN_EDGE_STATUSES = [
+    'ACTIVE', 'PAUSED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW',
+    'DISAPPROVED', 'PREAPPROVED', 'PENDING_BILLING_INFO', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED',
+];
+
+/** Campaign totals for a period, exactly as Ads Manager aggregates them (one Meta call). */
+export interface CampaignPeriodTotals {
+    spend: number;
+    impressions: number;
+    reach: number | null;
+    clicks: number;
+    frequency: number | null;
+    actions: unknown[];
+    action_values: unknown[];
+    cost_per_action_type: unknown[];
+    video_thruplays: number | null;
+    date_start: string | null;
+    date_stop: string | null;
+}
+
 /**
  * Basic server-side Meta API client.
  *
@@ -160,8 +181,10 @@ export class MetaServerClient {
                 fields: 'id,name,status,effective_status,objective,buying_type,account_id,daily_budget,lifetime_budget,start_time,stop_time',
                 limit: '200',
                 // The edge hides ARCHIVED/DELETED by default; the status refresh must see them so they stop showing "Active".
+                // DELETED must NOT be listed: the edge rejects it with (#100) "Invalid parameter"
+                // (subcode 1815001, "Cannot Request for Deleted Objects"), which broke every metadata refresh.
                 ...(opts.includeArchived
-                    ? { effective_status: JSON.stringify(['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED', 'IN_PROCESS', 'WITH_ISSUES']) }
+                    ? { effective_status: JSON.stringify(CAMPAIGN_EDGE_STATUSES) }
                     : {})
             };
 
@@ -171,7 +194,7 @@ export class MetaServerClient {
             while (nextEndpoint && pageCount < MAX_PAGES) {
                 pageCount++;
                 let urlToFetch = nextEndpoint;
-                let paramsToPass = currentParams;
+                let paramsToPass: Record<string, string> | undefined = currentParams;
 
                 let isAbsolute = urlToFetch.startsWith('http');
                 let responseData;
@@ -186,7 +209,19 @@ export class MetaServerClient {
                     });
                     responseData = await this.fetch(urlObj.pathname.replace(`/${META_GRAPH_API_VERSION}`, ''), parsedParams);
                 } else {
-                    responseData = await this.fetch(urlToFetch, paramsToPass || {});
+                    try {
+                        responseData = await this.fetch(urlToFetch, paramsToPass || {});
+                    } catch (e: any) {
+                        // Status filter rejected (#100): retry once with Meta's default filter rather than failing the refresh.
+                        if (e?.metaError?.code === 100 && paramsToPass?.effective_status) {
+                            const { effective_status: _drop, ...rest }: Record<string, string> = paramsToPass;
+                            console.warn(`[MetaServerClient] effective_status filter rejected on ${accountIdStr}; retrying without it.`);
+                            currentParams = rest;
+                            responseData = await this.fetch(urlToFetch, rest);
+                        } else {
+                            throw e;
+                        }
+                    }
                 }
 
                 if (responseData && Array.isArray(responseData.data)) {
@@ -219,6 +254,50 @@ export class MetaServerClient {
      */
     async getCampaignMetadata(metaAdAccountId: string): Promise<NormalizedCampaignMeta[]> {
         return this.getCampaigns(metaAdAccountId, { includeArchived: true });
+    }
+
+    /**
+     * Campaign-level totals for a window (or lifetime with `{ preset: 'maximum' }`).
+     * Spend/impressions/reach/results come from ONE aggregated query, so they always describe the
+     * same period and match Ads Manager (deduplicated reach, attribution-adjusted actions).
+     * Returns null on failure; an empty object of zeros when the campaign had no delivery.
+     */
+    async getCampaignPeriodTotals(
+        metaCampaignId: string,
+        window: { since: string; until: string } | { preset: 'maximum' }
+    ): Promise<CampaignPeriodTotals | null> {
+        try {
+            const params: Record<string, string> = {
+                fields: 'spend,impressions,reach,clicks,frequency,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
+            };
+            if ('preset' in window) params.date_preset = 'maximum';
+            else params.time_range = JSON.stringify(window);
+            const data = await this.fetch(`/${metaCampaignId}/insights`, params);
+            const row = Array.isArray(data?.data) ? data.data[0] : null;
+            const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0; };
+            if (!row) {
+                return { spend: 0, impressions: 0, reach: 0, clicks: 0, frequency: null, actions: [], action_values: [], cost_per_action_type: [], video_thruplays: 0, date_start: null, date_stop: null };
+            }
+            const thru = Array.isArray(row.video_thruplay_watched_actions)
+                ? row.video_thruplay_watched_actions.reduce((s: number, a: any) => s + num(a?.value), 0)
+                : null;
+            return {
+                spend: num(row.spend),
+                impressions: num(row.impressions),
+                reach: row.reach != null ? num(row.reach) : null,
+                clicks: num(row.clicks),
+                frequency: row.frequency != null ? num(row.frequency) : null,
+                actions: Array.isArray(row.actions) ? row.actions : [],
+                action_values: Array.isArray(row.action_values) ? row.action_values : [],
+                cost_per_action_type: Array.isArray(row.cost_per_action_type) ? row.cost_per_action_type : [],
+                video_thruplays: thru,
+                date_start: row.date_start ?? null,
+                date_stop: row.date_stop ?? null,
+            };
+        } catch (error: any) {
+            console.error(`[MetaServerClient] Failed to fetch period totals for campaign ${metaCampaignId}:`, error.message);
+            return null;
+        }
     }
 
     /**

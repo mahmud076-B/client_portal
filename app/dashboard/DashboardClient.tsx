@@ -37,7 +37,24 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
   );
 }
 
-const fmtMoney = (n: number | null | undefined) => (n == null ? 'N/A' : `$${n.toFixed(2)}`);
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', BDT: '৳', EUR: '€', GBP: '£', INR: '₹' };
+/** Money in the ad account currency. Small unit costs keep extra decimals (Ads Manager shows e.g. $0.003, not $0.00). */
+function makeMoney(currency: string | null | undefined) {
+  const code = (currency || 'USD').toUpperCase();
+  const sym = CURRENCY_SYMBOL[code] ?? `${code} `;
+  return (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(n)) return 'N/A';
+    const abs = Math.abs(n);
+    const digits = abs === 0 || abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
+    return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
+  };
+}
+
+function fmtDay(d: string | null | undefined) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
 
 export default function DashboardClient({
   profile,
@@ -69,6 +86,12 @@ export default function DashboardClient({
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   const delivery = deriveDeliveryStatus(selectedCampaign || {});
   const result = aggregates?.result ?? null;
+  const fmtMoney = makeMoney(aggregates?.currency);
+  const periodText = aggregates?.period?.since && aggregates?.period?.until
+    ? (aggregates.period.since === aggregates.period.until
+        ? fmtDay(aggregates.period.since)
+        : `${fmtDay(aggregates.period.since)} – ${fmtDay(aggregates.period.until)}`)
+    : '';
   const resultLabel: string = result?.spec?.label ?? 'Results';
 
   // Close sidebar on Escape key
@@ -368,8 +391,8 @@ export default function DashboardClient({
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F7931E" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               Total Spend
             </div>
-            <div className="kpi-value">${aggregates?.spend?.toFixed(2) || '0.00'}</div>
-            <div className="kpi-subtext">Lifetime tracked spend</div>
+            <div className="kpi-value">{fmtMoney(aggregates?.spend ?? 0)}</div>
+            <div className="kpi-subtext">{range === 'maximum' ? 'Lifetime spend' : 'Spend'}{periodText ? ` · ${periodText}` : ''}</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
@@ -385,7 +408,7 @@ export default function DashboardClient({
                 ? Math.round(aggregates.reach).toLocaleString()
                 : 'N/A'}
             </div>
-            <div className="kpi-subtext">Unique accounts (Fetched live from Meta)</div>
+            <div className="kpi-subtext">Unique accounts · same period{aggregates?.source === 'meta' ? ' (live from Meta)' : ''}</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
@@ -431,7 +454,7 @@ export default function DashboardClient({
           </div>
           <div className="kpi-card-sm">
             <div className="kpi-sm-label">CPM</div>
-            <div className="kpi-sm-value">${aggregates?.cpm?.toFixed(2) || '0.00'}</div>
+            <div className="kpi-sm-value">{fmtMoney(aggregates?.cpm)}</div>
           </div>
           {result?.spec?.valueTypes ? (
             <div className="kpi-card-sm">
@@ -445,7 +468,7 @@ export default function DashboardClient({
             <div className="kpi-card-sm">
               <div className="kpi-sm-label">Frequency</div>
               <div className="kpi-sm-value">
-                {aggregates?.reach && aggregates?.impressions ? (aggregates.impressions / aggregates.reach).toFixed(2) : 'N/A'}
+                {aggregates?.frequency != null ? Number(aggregates.frequency).toFixed(2) : 'N/A'}
               </div>
             </div>
           )}
@@ -457,7 +480,7 @@ export default function DashboardClient({
           <div>
             <div className="chart-title">Performance Overview</div>
             <div className="chart-sub">
-              {range === 'maximum' ? 'All available data' : range === 'today' ? 'Today' : `Last ${range} days`}
+              {range === 'maximum' ? 'All available data' : range === 'today' ? 'Today' : `Last ${range} days`}{periodText ? ` · ${periodText}` : ''}
             </div>
           </div>
           <div className="chart-tabs">
@@ -504,7 +527,7 @@ export default function DashboardClient({
                     {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget' : 'Daily Budget'}
                   </span>
                   <span className="detail-val detail-val-orange">
-                    ${Number(selectedCampaign.daily_budget).toFixed(2)} / day
+                    {fmtMoney(Number(selectedCampaign.daily_budget))} / day
                   </span>
                 </div>
               )}
@@ -514,7 +537,7 @@ export default function DashboardClient({
                     {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget (Lifetime)' : 'Lifetime Budget'}
                   </span>
                   <span className="detail-val detail-val-orange">
-                    ${Number(selectedCampaign.lifetime_budget).toFixed(2)} total
+                    {fmtMoney(Number(selectedCampaign.lifetime_budget))} total
                   </span>
                 </div>
               )}
