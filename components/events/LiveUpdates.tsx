@@ -1,8 +1,9 @@
 'use client';
 import './live-updates.css';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { poppins } from '@/components/brand/fonts';
+import { feedScopeQuery } from '@/lib/events/feed-scope';
 
 interface FeedEvent {
   id: string;
@@ -53,18 +54,30 @@ function EventIcon({ type }: { type: FeedEvent['type'] }) {
   }
 }
 
-export default function LiveUpdates({ campaignId }: { campaignId?: string | null }) {
+/**
+ * Live updates for the campaign selected on the dashboard. "All" means every campaign
+ * on THIS dashboard (passed in), never every campaign the viewer can read via RLS
+ * (admins can read the whole organization).
+ */
+export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaignId?: string | null; campaignIds?: string[] }) {
   const [events, setEvents] = useState<FeedEvent[] | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
-  const [scope, setScope] = useState<'all' | 'campaign'>('all');
+  const [scope, setScope] = useState<'all' | 'campaign'>('campaign');
   const [live, setLive] = useState(false);
   const [polling, setPolling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
+  const allKey = campaignIds.join(',');
+  const showAll = scope === 'all' || !campaignId;
+  const scopedIds = useMemo(
+    () => (showAll ? (allKey ? allKey.split(',') : campaignId ? [campaignId] : []) : [campaignId!]),
+    [showAll, allKey, campaignId]
+  );
+  const qs = feedScopeQuery(scopedIds);
+
   const load = useCallback(async () => {
     try {
-      const qs = scope === 'campaign' && campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
       const res = await fetch(`/api/campaign-events${qs}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
@@ -78,7 +91,7 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
       setPolling(false);
       setEvents((prev) => prev ?? []);
     }
-  }, [scope, campaignId]);
+  }, [qs]);
 
   useEffect(() => {
     // Initial fetch; state is only set after the network round-trip.
@@ -95,24 +108,32 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
     };
   }, [load]);
 
-  // Supabase Realtime: refetch whenever a new event the user may see is inserted (RLS applies).
+  // Supabase Realtime (RLS applies): only this campaign's inserts when one is selected.
   useEffect(() => {
     const supabase = createClient();
+    const single = scopedIds.length === 1 ? scopedIds[0] : null;
     const channel = supabase
-      .channel('campaign-events-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'campaign_events' }, () => load())
+      .channel(`campaign-events-${single ?? 'dashboard'}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'campaign_events', ...(single ? { filter: `campaign_id=eq.${single}` } : {}) },
+        (payload: { new?: { campaign_id?: string } }) => {
+          const cid = payload?.new?.campaign_id;
+          if (!cid || scopedIds.includes(cid)) load();
+        }
+      )
       .subscribe((status) => setLive(status === 'SUBSCRIBED'));
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, scopedIds]);
 
   useEffect(() => {
-    fetch('/api/ai/daily-summary', { cache: 'no-store' })
+    fetch(`/api/ai/daily-summary${qs}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setSummary(d?.summary ?? null))
       .catch(() => setSummary(null));
-  }, []);
+  }, [qs]);
 
   return (
     <div className={`${poppins.variable} mk-lu`}>
@@ -122,9 +143,9 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
           Live updates
           {(live || polling) && <span className="mk-lu-livepill">LIVE</span>}
         </div>
-        {campaignId && (
+        {campaignId && campaignIds.length > 1 && (
           <div className="mk-lu-toggle" role="tablist" aria-label="Filter updates">
-            <button type="button" role="tab" aria-selected={scope === 'all'} className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All</button>
+            <button type="button" role="tab" aria-selected={scope === 'all'} className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All campaigns</button>
             <button type="button" role="tab" aria-selected={scope === 'campaign'} className={scope === 'campaign' ? 'on' : ''} onClick={() => setScope('campaign')}>This campaign</button>
           </div>
         )}
@@ -155,6 +176,7 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
             <li key={e.id} className={`mk-lu-item sev-${e.severity}${now - Date.parse(e.occurred_at) < 3600_000 ? ' is-new' : ''}`}>
               <span className="mk-lu-icon"><EventIcon type={e.type} /></span>
               <div className="mk-lu-text">
+                {showAll && e.campaign_name && <div className="mk-lu-tag">{e.campaign_name}</div>}
                 <div className="mk-lu-item-title">{e.title}</div>
                 {e.body && <div className="mk-lu-item-body">{e.body}</div>}
                 <time className="mk-lu-time" dateTime={e.occurred_at} title={new Date(e.occurred_at).toLocaleString()}>

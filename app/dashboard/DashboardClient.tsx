@@ -556,7 +556,7 @@ export default function DashboardClient({
 
         <div className="col-right">
           
-          <LiveUpdates campaignId={selectedCampaign?.id ?? null} />
+          <LiveUpdates campaignId={selectedCampaign?.id ?? null} campaignIds={campaigns.map((c: any) => c.id)} />
 
           <div className="activity-card fade-up">
             <div className="card-title">

@@ -54,12 +54,14 @@ export async function listClients(scope: Scope) {
   return { clients: data || [] };
 }
 
-export async function listCampaigns(scope: Scope, opts: { clientId?: string } = {}) {
+export async function listCampaigns(scope: Scope, opts: { clientId?: string; campaignIds?: string[] } = {}) {
+  if (opts.campaignIds && opts.campaignIds.length === 0) return { campaigns: [] };
   let query = scope.supabase
     .from('campaigns')
     .select('id, name, objective, optimization_goal, status, effective_status, daily_budget, lifetime_budget, start_time, end_time, ad_account_id, updated_at')
     .order('start_time', { ascending: false, nullsFirst: false });
 
+  if (opts.campaignIds) query = query.in('id', opts.campaignIds);
   // Clients are already scoped by RLS; the filter is an admin convenience.
   if (opts.clientId && isAdmin(scope.profile)) {
     const ids = await campaignIdsForClient(scope, opts.clientId);
@@ -151,14 +153,16 @@ export async function getCampaignMetrics(
 
 export async function getRecentEvents(
   scope: Scope,
-  opts: { campaignId?: string; clientId?: string; limit?: number; sinceHours?: number } = {}
+  opts: { campaignId?: string; campaignIds?: string[]; clientId?: string; limit?: number; sinceHours?: number } = {}
 ) {
+  if (opts.campaignIds && opts.campaignIds.length === 0) return { events: [] };
   let q = scope.supabase
     .from('campaign_events')
     .select('id, campaign_id, event_type, severity, title, body, metadata, occurred_at, campaigns(name)')
     .order('occurred_at', { ascending: false })
     .limit(Math.min(Math.max(opts.limit ?? 20, 1), 50));
   if (opts.campaignId) q = q.eq('campaign_id', opts.campaignId);
+  if (opts.campaignIds) q = q.in('campaign_id', opts.campaignIds);
   if (opts.sinceHours) q = q.gte('occurred_at', new Date(Date.now() - opts.sinceHours * 3600_000).toISOString());
   if (opts.clientId && isAdmin(scope.profile)) {
     const ids = await campaignIdsForClient(scope, opts.clientId);
@@ -188,10 +192,13 @@ export async function getRecentEvents(
  * Day-over-day performance numbers for the visible live campaigns (RLS-scoped),
  * used by the AI coach status line.
  */
-export async function getPerformanceSnapshot(scope: Scope, opts: { limit?: number } = {}) {
-  const { data: campaigns } = await scope.supabase
+export async function getPerformanceSnapshot(scope: Scope, opts: { limit?: number; campaignIds?: string[] } = {}) {
+  if (opts.campaignIds && opts.campaignIds.length === 0) return [];
+  let cq = scope.supabase
     .from('campaigns')
     .select('id, name, objective, optimization_goal, status, effective_status, start_time, end_time, daily_budget, lifetime_budget, ad_account_id');
+  if (opts.campaignIds) cq = cq.in('id', opts.campaignIds);
+  const { data: campaigns } = await cq;
   const live = (campaigns || []).filter((c) => deriveDeliveryStatus(c).isLive).slice(0, opts.limit ?? 8);
   if (live.length === 0) return [];
   const meta = await accountMeta([...new Set(live.map((c) => c.ad_account_id as string))]);
@@ -215,8 +222,10 @@ export async function getPerformanceSnapshot(scope: Scope, opts: { limit?: numbe
 }
 
 /** Latest successful sync across the ad accounts behind the visible campaigns. */
-export async function getLastSyncedAt(scope: Scope): Promise<string | null> {
-  const { data: campaigns } = await scope.supabase.from('campaigns').select('ad_account_id');
+export async function getLastSyncedAt(scope: Scope, opts: { campaignIds?: string[] } = {}): Promise<string | null> {
+  let cq = scope.supabase.from('campaigns').select('ad_account_id');
+  if (opts.campaignIds) cq = cq.in('id', opts.campaignIds.length ? opts.campaignIds : ['00000000-0000-0000-0000-000000000000']);
+  const { data: campaigns } = await cq;
   const ids = [...new Set((campaigns || []).map((c) => c.ad_account_id as string))];
   if (ids.length === 0) return null;
   const { data } = await createAdminClient()
