@@ -1,24 +1,9 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { addDays, dayIn, isIsoDay } from '@/lib/dates';
+import { computeInsightGap } from '@/lib/meta/insight-gap';
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
-
-/** YYYY-MM-DD for `date` in `timeZone`. */
-export function dayIn(timeZone: string, date: Date = new Date()): string {
-    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
-}
-
-/** Calendar arithmetic on YYYY-MM-DD strings (UTC-safe). */
-export function addDays(day: string, delta: number): string {
-    const [y, m, d] = day.split('-').map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() + delta);
-    return dt.toISOString().slice(0, 10);
-}
-
-export function isIsoDay(v: string | null | undefined): v is string {
-    return !!v && ISO.test(v);
-}
+export { addDays, dayIn, isIsoDay };
 
 /**
  * Finds the span of days (in the ad account timezone) on which a currently-delivering
@@ -55,21 +40,11 @@ export async function findInsightGap(
         .limit(5000);
     if (rowsErr) return null;
 
-    const have = new Set((rows || []).map((r) => `${r.campaign_id}:${r.date}`));
-    let since: string | null = null;
-    let until: string | null = null;
-
-    for (const c of live) {
-        const start = c.start_time ? dayIn(params.timeZone, new Date(c.start_time)) : windowStart;
-        const end = c.end_time ? dayIn(params.timeZone, new Date(c.end_time)) : windowEnd;
-        const from = start > windowStart ? start : windowStart;
-        const to = end < windowEnd ? end : windowEnd;
-        for (let d = from; d <= to; d = addDays(d, 1)) {
-            if (!have.has(`${c.id}:${d}`)) {
-                if (!since || d < since) since = d;
-                if (!until || d > until) until = d;
-            }
-        }
-    }
-    return since && until ? { since, until } : null;
+    return computeInsightGap({
+        campaigns: live,
+        have: new Set((rows || []).map((r) => `${r.campaign_id}:${r.date}`)),
+        windowStart,
+        windowEnd,
+        timeZone: params.timeZone,
+    });
 }

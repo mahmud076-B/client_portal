@@ -80,6 +80,7 @@ export interface CampaignPeriodTotals {
     impressions: number;
     reach: number | null;
     clicks: number;
+    link_clicks: number;
     frequency: number | null;
     actions: unknown[];
     action_values: unknown[];
@@ -268,7 +269,7 @@ export class MetaServerClient {
     ): Promise<CampaignPeriodTotals | null> {
         try {
             const params: Record<string, string> = {
-                fields: 'spend,impressions,reach,clicks,frequency,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
+                fields: 'spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
             };
             if ('preset' in window) params.date_preset = 'maximum';
             else params.time_range = JSON.stringify(window);
@@ -276,7 +277,7 @@ export class MetaServerClient {
             const row = Array.isArray(data?.data) ? data.data[0] : null;
             const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0; };
             if (!row) {
-                return { spend: 0, impressions: 0, reach: 0, clicks: 0, frequency: null, actions: [], action_values: [], cost_per_action_type: [], video_thruplays: 0, date_start: null, date_stop: null };
+                return { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, frequency: null, actions: [], action_values: [], cost_per_action_type: [], video_thruplays: 0, date_start: null, date_stop: null };
             }
             const thru = Array.isArray(row.video_thruplay_watched_actions)
                 ? row.video_thruplay_watched_actions.reduce((s: number, a: any) => s + num(a?.value), 0)
@@ -286,6 +287,7 @@ export class MetaServerClient {
                 impressions: num(row.impressions),
                 reach: row.reach != null ? num(row.reach) : null,
                 clicks: num(row.clicks),
+                link_clicks: num(row.inline_link_clicks),
                 frequency: row.frequency != null ? num(row.frequency) : null,
                 actions: Array.isArray(row.actions) ? row.actions : [],
                 action_values: Array.isArray(row.action_values) ? row.action_values : [],

@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
+import { deriveDeliveryStatus } from '@/lib/meta/results';
 import { GlassLinkCard, KpiCard, PageHeader, ButtonLink } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -15,13 +16,15 @@ async function loadCounts(organizationId: string | null) {
   if (!organizationId) return null;
   try {
     const supabase = await createClient();
-    const [clients, accounts, campaigns, active] = await Promise.all([
+    const [clients, accounts, campaigns, activeRows] = await Promise.all([
       supabase.from('clients').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
       supabase.from('ad_accounts').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
       supabase.from('campaigns').select('id, ad_accounts!inner(organization_id)', { count: 'exact', head: true }).eq('ad_accounts.organization_id', organizationId),
-      supabase.from('campaigns').select('id, ad_accounts!inner(organization_id)', { count: 'exact', head: true }).eq('ad_accounts.organization_id', organizationId).eq('status', 'ACTIVE').or(`end_time.is.null,end_time.gt.${new Date().toISOString()}`),
+      supabase.from('campaigns').select('status, effective_status, start_time, end_time, ad_accounts!inner(organization_id)').eq('ad_accounts.organization_id', organizationId),
     ]);
-    return { clients: clients.count ?? 0, accounts: accounts.count ?? 0, campaigns: campaigns.count ?? 0, active: active.count ?? 0 };
+    // "Active" = actually delivering, from the shared status function (same as every other screen).
+    const active = (activeRows.data || []).filter((c) => deriveDeliveryStatus(c).isLive).length;
+    return { clients: clients.count ?? 0, accounts: accounts.count ?? 0, campaigns: campaigns.count ?? 0, active };
   } catch {
     return null;
   }

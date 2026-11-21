@@ -11,41 +11,42 @@ export default async function MetaAdminPage() {
 
     const supabase = await createClient();
     
-    // Fetch connection status for this organization
-    const { data: connection } = await supabase
-        .from('meta_connections')
-        .select('*')
-        .eq('organization_id', profile.organization_id)
-        .single();
+    // All four reads in parallel (were sequential). Token columns are never selected here.
+    const [
+        { data: connection },
+        { data: registeredAccounts },
+        { data: localClients },
+        { data: allRegisteredCampaigns },
+    ] = await Promise.all([
+        supabase
+            .from('meta_connections')
+            .select('id, organization_id, meta_user_id, status, last_validated_at, token_expires_at, created_at, updated_at')
+            .eq('organization_id', profile.organization_id)
+            .maybeSingle(),
+        supabase
+            .from('ad_accounts')
+            .select('*')
+            .eq('organization_id', profile.organization_id)
+            .order('created_at', { ascending: false }),
+        supabase
+            .from('clients')
+            .select('id, name')
+            .eq('organization_id', profile.organization_id)
+            .order('name', { ascending: true }),
+        // Registered campaigns with their assignments (if any)
+        supabase
+            .from('campaigns')
+            .select(`
+                *,
+                ad_accounts!inner(organization_id),
+                campaign_assignments(clients(id, name))
+            `)
+            .eq('ad_accounts.organization_id', profile.organization_id)
+            .order('created_at', { ascending: false }),
+    ]);
 
     const tokenExpired = !!connection?.token_expires_at && new Date(connection.token_expires_at) <= new Date();
     const isHealthy = !!connection && connection.status === 'connected' && !tokenExpired;
-
-    // Fetch already registered Ad Accounts for this organization
-    const { data: registeredAccounts } = await supabase
-        .from('ad_accounts')
-        .select('*')
-        .eq('organization_id', profile.organization_id)
-        .order('created_at', { ascending: false });
-
-    // Fetch clients for this organization
-    const { data: localClients } = await supabase
-        .from('clients')
-        .select('id, name')
-        .eq('organization_id', profile.organization_id)
-        .order('name', { ascending: true });
-
-    // Fetch all registered campaigns for this organization's ad accounts
-    // We use a nested select to include the assignments (if any)
-    const { data: allRegisteredCampaigns } = await supabase
-        .from('campaigns')
-        .select(`
-            *,
-            ad_accounts!inner(organization_id),
-            campaign_assignments(clients(id, name))
-        `)
-        .eq('ad_accounts.organization_id', profile.organization_id)
-        .order('created_at', { ascending: false });
 
     return (
         <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">

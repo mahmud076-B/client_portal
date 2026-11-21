@@ -1,0 +1,133 @@
+/**
+ * Pure dashboard aggregation (unit-tested): picks the source of truth for KPI totals
+ * and the objective-aware result.
+ *
+ * - When Meta period totals are available (one aggregated insights query for the exact
+ *   window), every KPI comes from them, so spend, impressions, de-duplicated reach,
+ *   frequency and results describe the SAME period and match Ads Manager.
+ * - Otherwise totals are summed from the synced daily rows; reach is then unknown
+ *   (daily reach is not additive), never mixed with a different source.
+ */
+import { addDays } from '@/lib/dates';
+import { computeResult, resolveResultSpec, resolveResultSpecForData, type ComputedResult, type InsightRow, type ResultSpec } from '@/lib/meta/results';
+
+export type DashboardRange = 'today' | '7' | '14' | '30' | 'maximum';
+
+/**
+ * Ads Manager presets, in the ad account timezone: "Last N days" = the N full days
+ * BEFORE today (today excluded), e.g. on 22 Nov "Last 7 days" = 15–21 Nov. "today" = today.
+ */
+export function rangeWindow(range: DashboardRange, today: string): { since: string; until: string } {
+    if (range === '7' || range === '14' || range === '30') {
+        const n = parseInt(range, 10);
+        return { since: addDays(today, -n), until: addDays(today, -1) };
+    }
+    return { since: today, until: today };
+}
+
+export interface MetaPeriodTotals {
+    spend: number;
+    impressions: number;
+    reach: number | null;
+    clicks: number;
+    /** Link clicks (Ads Manager "Link clicks"; inline_link_clicks). */
+    link_clicks: number;
+    frequency: number | null;
+    actions: unknown[];
+    action_values: unknown[];
+    video_thruplays: number | null;
+    date_start?: string | null;
+    date_stop?: string | null;
+}
+
+export type DashboardRow = InsightRow & { clicks?: number | string | null };
+
+export interface DashboardTotals {
+    spend: number;
+    impressions: number;
+    reach: number | null;
+    clicks: number;
+    linkClicks: number;
+    frequency: number | null;
+    /** Cost per LINK click, as Ads Manager's "CPC (cost per link click)". */
+    cpc: number | null;
+    cpm: number | null;
+    /** Link click-through rate (%), as Ads Manager's "CTR (link click-through rate)". */
+    ctr: number;
+    source: 'meta' | 'synced';
+}
+
+/** link_click from a Meta actions array (0 when absent). */
+function linkClicksOf(actions: unknown): number {
+    if (!Array.isArray(actions)) return 0;
+    const hit = (actions as { action_type?: string; value?: unknown }[]).find((a) => a?.action_type === 'link_click');
+    return hit ? Number(hit.value) || 0 : 0;
+}
+
+const num = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0);
+
+export function buildDashboardTotals(params: {
+    campaign: { objective?: string | null; optimization_goal?: string | null };
+    rows: DashboardRow[];
+    meta: MetaPeriodTotals | null;
+    endDate: string;
+}): { totals: DashboardTotals; resultSpec: ResultSpec | null; result: ComputedResult | null } {
+    const { campaign, rows, meta } = params;
+
+    const synced = rows.reduce(
+        (s, r) => ({
+            spend: s.spend + num(r.spend),
+            impressions: s.impressions + num(r.impressions),
+            clicks: s.clicks + num(r.clicks),
+            linkClicks: s.linkClicks + linkClicksOf(r.actions),
+            messaging: s.messaging + num(r.messaging_conversations_started),
+        }),
+        { spend: 0, impressions: 0, clicks: 0, linkClicks: 0, messaging: 0 }
+    );
+
+    const spend = meta ? meta.spend : synced.spend;
+    const impressions = meta ? meta.impressions : synced.impressions;
+    const clicks = meta ? meta.clicks : synced.clicks;
+    const linkClicks = meta ? meta.link_clicks : synced.linkClicks;
+    const reach = meta ? meta.reach : null;
+    const frequency = meta?.frequency ?? (reach && impressions ? impressions / reach : null);
+
+    const resultSpec =
+        resolveResultSpecForData(campaign.objective, campaign.optimization_goal, [
+            ...rows,
+            ...(meta ? [{ actions: meta.actions }] : []),
+        ]) ?? resolveResultSpec(synced.messaging > 0 ? 'MESSAGES' : 'OUTCOME_TRAFFIC');
+
+    let result: ComputedResult | null = null;
+    if (resultSpec) {
+        const resultRows: InsightRow[] = meta
+            ? [{
+                date: meta.date_stop || params.endDate,
+                spend, impressions, reach,
+                actions: meta.actions,
+                action_values: meta.action_values,
+                video_thruplays: meta.video_thruplays,
+            }]
+            : rows;
+        result = computeResult(resultSpec, resultRows, { totalSpend: spend, periodReach: reach, totalImpressions: impressions });
+        // Charts keep the per-day series from the synced rows.
+        if (meta) result.daily = computeResult(resultSpec, rows, { totalSpend: synced.spend }).daily;
+    }
+
+    return {
+        totals: {
+            spend,
+            impressions,
+            reach,
+            clicks,
+            linkClicks,
+            frequency,
+            cpc: linkClicks > 0 ? spend / linkClicks : null,
+            cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+            ctr: impressions > 0 ? (linkClicks / impressions) * 100 : 0,
+            source: meta ? 'meta' : 'synced',
+        },
+        resultSpec,
+        result,
+    };
+}

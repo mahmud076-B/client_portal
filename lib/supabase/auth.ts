@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createClient } from './server';
 
 export type UserRole = 'super_admin' | 'admin' | 'client';
@@ -18,10 +19,11 @@ export interface ClientRecord {
 }
 
 /**
- * Retrieves the current authenticated user and their business profile.
- * Server-side only.
+ * Retrieves the current authenticated user and their business profile. Server-side only.
+ * Memoized per request (React cache): layout, page and the AI widget all call this,
+ * which used to cost 3 Supabase Auth round-trips + 3 profile queries per navigation.
  */
-export async function getCurrentProfile(): Promise<{
+export const getCurrentProfile = cache(async function getCurrentProfile(): Promise<{
   user: any;
   profile: UserProfile | null;
   client: ClientRecord | null;
@@ -61,7 +63,7 @@ export async function getCurrentProfile(): Promise<{
     profile: profileData as UserProfile,
     client: clientData as ClientRecord,
   };
-}
+});
 
 /**
  * Convenience helper to enforce that the user is authenticated.

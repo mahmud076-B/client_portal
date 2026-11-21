@@ -2,7 +2,8 @@ import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import ClientManager from './ClientManager';
 import ClientActions from './ClientActions';
-import { Badge, DataTable, EmptyState, GlassCard, KpiCard, PageHeader } from '@/components/ui';
+import { Badge, DataTable, EmptyState, GlassCard, KpiCard, PageHeader, statusTone } from '@/components/ui';
+import { deriveDeliveryStatus, summarizeDeliveryStatus } from '@/lib/meta/results';
 
 export const metadata = {
   title: 'Client Management — Marketivity',
@@ -12,70 +13,79 @@ export default async function ClientsPage() {
   // 1. Enforce Admin Authorization
   const { profile } = await requireAdmin();
 
-  // 2. Fetch Clients for the Admin's Organization
+  // 2. All reads in parallel (they were 5 sequential round-trips).
   const supabase = await createClient();
-  const { data: clients, error } = await supabase
-    .from('clients')
-    .select(`
-      id,
-      name,
-      company_name,
-      email,
-      status,
-      created_at,
-      campaign_assignments ( count ),
-      profiles ( id )
-    `)
-    .eq('organization_id', profile.organization_id)
-    .order('created_at', { ascending: false });
+  const [
+    { data: clients, error },
+    { data: allCampaigns },
+    { data: assignmentsList },
+  ] = await Promise.all([
+    supabase
+      .from('clients')
+      .select(`
+        id,
+        name,
+        company_name,
+        email,
+        status,
+        created_at,
+        campaign_assignments ( count ),
+        profiles ( id )
+      `)
+      .eq('organization_id', profile.organization_id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('campaigns')
+      .select('id, name, status, effective_status, start_time, end_time, ad_accounts!inner(organization_id, currency)')
+      .eq('ad_accounts.organization_id', profile.organization_id)
+      .order('name'),
+    supabase
+      .from('campaign_assignments')
+      .select(`
+        client_id,
+        campaign_id,
+        created_at,
+        campaigns!inner(name, status, meta_campaign_id),
+        clients!inner(organization_id)
+      `)
+      .eq('clients.organization_id', profile.organization_id),
+  ]);
 
   if (error) {
     console.error("Error fetching clients:", error);
   }
 
-  // 3. Fetch insights to calculate total spend per client
-  const { data: assignments } = await supabase
-    .from('campaign_assignments')
-    .select('client_id, campaign_id');
+  // 3. Spend per client: only the assigned campaigns' insight rows (was: every insight row in the DB).
+  const assignedCampaignIds = [...new Set((assignmentsList || []).map((a) => a.campaign_id as string))];
+  const { data: insights } = assignedCampaignIds.length
+    ? await supabase.from('campaign_insights').select('campaign_id, spend').in('campaign_id', assignedCampaignIds)
+    : { data: [] as { campaign_id: string; spend: number | null }[] };
 
-  const { data: insights } = await supabase
-    .from('campaign_insights')
-    .select('campaign_id, spend');
-
+  const campaignSpendMap: Record<string, number> = {};
+  for (const i of insights || []) {
+    campaignSpendMap[i.campaign_id] = (campaignSpendMap[i.campaign_id] || 0) + Number(i.spend || 0);
+  }
   const clientSpendMap: Record<string, number> = {};
-  
-  if (assignments && insights) {
-     const campaignSpendMap: Record<string, number> = {};
-     insights.forEach(i => {
-         campaignSpendMap[i.campaign_id] = (campaignSpendMap[i.campaign_id] || 0) + Number(i.spend || 0);
-     });
-     
-     assignments.forEach(a => {
-         clientSpendMap[a.client_id] = (clientSpendMap[a.client_id] || 0) + (campaignSpendMap[a.campaign_id] || 0);
-     });
+  for (const a of assignmentsList || []) {
+    clientSpendMap[a.client_id] = (clientSpendMap[a.client_id] || 0) + (campaignSpendMap[a.campaign_id] || 0);
   }
 
-  // 4. Fetch all available campaigns and detailed assignments for Management
-  const { data: allCampaigns } = await supabase
-    .from('campaigns')
-    .select('id, name, status, effective_status, start_time, end_time, ad_accounts!inner(organization_id)')
-    .eq('ad_accounts.organization_id', profile.organization_id)
-    .order('name');
-
-  const { data: assignmentsList } = await supabase
-    .from('campaign_assignments')
-    .select(`
-      client_id, 
-      campaign_id, 
-      created_at, 
-      campaigns!inner(name, status, meta_campaign_id),
-      clients!inner(organization_id)
-    `)
-    .eq('clients.organization_id', profile.organization_id);
+  // 4. Campaign delivery status per client, from the ONE shared status function.
+  const campaignById = new Map((allCampaigns || []).map((c) => [c.id as string, c]));
+  const clientCampaignStatus = (clientId: string) =>
+    summarizeDeliveryStatus(
+      (assignmentsList || [])
+        .filter((a) => a.client_id === clientId)
+        .map((a) => campaignById.get(a.campaign_id as string))
+        .filter((c): c is NonNullable<typeof c> => Boolean(c))
+    );
+  const liveCampaigns = (allCampaigns || []).filter((c) => deriveDeliveryStatus(c).isLive).length;
 
   const totalSpend = Object.values(clientSpendMap).reduce((a, b) => a + b, 0);
-  const activeCount = (clients || []).filter((c) => c.status === 'active').length;
-  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const accessCount = (clients || []).filter((c) => c.status === 'active').length;
+  // Spend is stored in each ad account's currency; all Marketivity accounts report in one currency.
+  const currencies = [...new Set((allCampaigns || []).map((c: any) => (Array.isArray(c.ad_accounts) ? c.ad_accounts[0] : c.ad_accounts)?.currency).filter(Boolean))];
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencies.length === 1 ? String(currencies[0]) : 'USD' });
 
   return (
     <div className="gx-stack">
@@ -88,7 +98,8 @@ export default async function ClientsPage() {
 
       <div className="gx-grid">
         <KpiCard label="Total clients" value={(clients || []).length} />
-        <KpiCard label="Active" value={activeCount} foot="With portal access enabled" />
+        <KpiCard label="Live campaigns" value={liveCampaigns} foot="Delivering right now" />
+        <KpiCard label="Portal access" value={accessCount} foot="Clients who can sign in" />
         <KpiCard label="Lifetime spend" value={money.format(totalSpend)} foot="Across assigned campaigns" />
       </div>
 
@@ -106,7 +117,8 @@ export default async function ClientsPage() {
               <tr>
                 <th>Client / Business</th>
                 <th>Contact email</th>
-                <th>Status</th>
+                <th>Campaign status</th>
+                <th>Portal access</th>
                 <th className="gx-num">Campaigns</th>
                 <th className="gx-num">Total spend</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -116,6 +128,7 @@ export default async function ClientsPage() {
               {clients.map((client) => {
                 const isOrphan = !client.profiles || client.profiles.length === 0;
                 const clientAssignments = (assignmentsList || []).filter(a => a.client_id === client.id);
+                const delivery = clientCampaignStatus(client.id);
 
                 return (
                   <tr key={client.id}>
@@ -128,8 +141,17 @@ export default async function ClientsPage() {
                     </td>
                     <td>{client.email}</td>
                     <td>
-                      <Badge tone={client.status === 'active' ? 'success' : 'neutral'} dot>
-                        {client.status === 'active' ? 'Active' : 'Inactive'}
+                      {delivery ? (
+                        <Badge tone={statusTone(delivery.code)} dot live={delivery.isLive} title={delivery.description}>
+                          {delivery.label}
+                        </Badge>
+                      ) : (
+                        <span className="gx-muted">No campaigns</span>
+                      )}
+                    </td>
+                    <td>
+                      <Badge tone={client.status === 'active' ? 'info' : 'neutral'}>
+                        {client.status === 'active' ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </td>
                     <td className="gx-num">{client.campaign_assignments?.[0]?.count || 0}</td>

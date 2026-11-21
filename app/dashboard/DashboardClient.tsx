@@ -1,6 +1,6 @@
 'use client';
 import './dashboard.css';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useTransition } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
@@ -38,14 +38,15 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', BDT: '৳', EUR: '€', GBP: '£', INR: '₹' };
-/** Money in the ad account currency. Small unit costs keep extra decimals (Ads Manager shows e.g. $0.003, not $0.00). */
+/** Money in the ad account currency, 2 decimals like Ads Manager; sub-cent unit costs keep extra decimals instead of $0.00. */
 function makeMoney(currency: string | null | undefined) {
   const code = (currency || 'USD').toUpperCase();
   const sym = CURRENCY_SYMBOL[code] ?? `${code} `;
   return (n: number | null | undefined) => {
     if (n == null || !Number.isFinite(n)) return 'N/A';
     const abs = Math.abs(n);
-    const digits = abs === 0 || abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
+    // 2 decimals like Ads Manager; only sub-cent amounts get more (never a misleading 0.00).
+    const digits = abs === 0 || abs >= 0.01 ? 2 : abs >= 0.001 ? 3 : 4;
     return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
   };
 }
@@ -82,6 +83,8 @@ export default function DashboardClient({
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Range/campaign switches re-render on the server; dim the content instantly instead of looking frozen.
+  const [navigating, startNavigation] = useTransition();
   const greeting = useGreeting();
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   const delivery = deriveDeliveryStatus(selectedCampaign || {});
@@ -108,14 +111,14 @@ export default function DashboardClient({
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('campaignId', e.target.value);
-    router.push(`${pathname}?${newParams.toString()}`);
+    startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
   const handleRangeChange = (newRange: string) => {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('range', newRange);
     newParams.delete('days'); // clear legacy param
-    router.push(`${pathname}?${newParams.toString()}`);
+    startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
   const handleSignOut = async (e: React.MouseEvent) => {
@@ -317,7 +320,7 @@ export default function DashboardClient({
     </header>
 
     
-        <main className="content">
+        <main className={`content${navigating ? ' is-navigating' : ''}`} aria-busy={navigating}>
       {(!campaigns || campaigns.length === 0) ? (
         <div className="demo-notice fade-up" style={{ textAlign: 'center', padding: '40px' }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ margin: '0 auto 10px', display: 'block' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -445,11 +448,11 @@ export default function DashboardClient({
 
         <div className="kpi-grid-sec">
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CTR</div>
+            <div className="kpi-sm-label">CTR (link)</div>
             <div className="kpi-sm-value">{aggregates?.ctr?.toFixed(2) || '0.00'}%</div>
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPC</div>
+            <div className="kpi-sm-label">CPC (link)</div>
             <div className="kpi-sm-value">{fmtMoney(aggregates?.cpc)}</div>
           </div>
           <div className="kpi-card-sm">

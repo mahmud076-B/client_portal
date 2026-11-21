@@ -321,6 +321,24 @@ export function deriveDeliveryStatus(
     return { key: 'unknown', code: 'OTHER', label: eff ? eff.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (s) => s.toUpperCase()) : 'Unknown', tone: 'gray', description: 'Status synced from Meta.', isLive: false };
 }
 
+/**
+ * One status for a group of campaigns (e.g. a client's campaigns), built on deriveDeliveryStatus:
+ * Active if any campaign is delivering; otherwise the most relevant state (issues > review >
+ * scheduled > paused > completed > archived). Empty list => null.
+ */
+export function summarizeDeliveryStatus(
+    campaigns: Parameters<typeof deriveDeliveryStatus>[0][],
+    now: Date = new Date()
+): (DeliveryStatus & { liveCount: number; total: number }) | null {
+    if (!campaigns.length) return null;
+    const all = campaigns.map((c) => deriveDeliveryStatus(c, now));
+    const liveCount = all.filter((s) => s.isLive).length;
+    const order: DerivedStatus[] = ['ACTIVE', 'REJECTED', 'IN_REVIEW', 'SCHEDULED', 'PAUSED', 'OTHER', 'COMPLETED', 'ARCHIVED', 'DELETED'];
+    const top = [...all].sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code))[0];
+    const label = liveCount > 1 ? `${liveCount} active` : top.label;
+    return { ...top, label, liveCount, total: all.length };
+}
+
 /** Friendly objective name for display. */
 export function objectiveLabel(objective?: string | null, optimizationGoal?: string | null): string {
     // The ad set goal is more specific than the ODAX objective (e.g. Engagement -> Followers).
