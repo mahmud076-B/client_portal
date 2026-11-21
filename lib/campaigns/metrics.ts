@@ -42,10 +42,40 @@ function toNumber(v: unknown): number | null {
   return null;
 }
 
+/**
+ * Meta `actions` / `action_values` arrays (AdsActionStats[]) if present are
+ * flattened into `actions.<action_type>` / `action_values.<action_type>` totals.
+ */
+const ACTION_ARRAYS = new Set(['actions', 'action_values']);
+
+/** Action types that count as a client-facing "result" (others are engagement noise). */
+const RESULT_ACTION_LABELS: Record<string, string> = {
+  'actions.onsite_conversion.messaging_conversation_started_7d': 'messaging conversations',
+  'actions.like': 'page likes',
+  'actions.onsite_conversion.follow': 'follows',
+  'actions.follow': 'follows',
+  'actions.omni_purchase': 'purchases',
+  'actions.purchase': 'purchases',
+  'actions.offsite_conversion.fb_pixel_purchase': 'website purchases',
+  'actions.lead': 'leads',
+  'actions.onsite_conversion.lead_grouped': 'leads',
+  'actions.complete_registration': 'registrations',
+  'actions.landing_page_view': 'landing page views',
+};
+
 export function sumInsights(rows: InsightRow[]): MetricTotals {
   const totals: MetricTotals = {};
   for (const row of rows) {
     for (const [key, raw] of Object.entries(row)) {
+      if (ACTION_ARRAYS.has(key) && Array.isArray(raw)) {
+        for (const a of raw as { action_type?: string; value?: unknown }[]) {
+          const n = toNumber(a?.value);
+          if (!a?.action_type || n === null) continue;
+          const k = `${key}.${a.action_type}`;
+          totals[k] = (totals[k] ?? 0) + n;
+        }
+        continue;
+      }
       if (isRatioColumn(key)) continue;
       const n = toNumber(raw);
       if (n === null) continue;
@@ -68,12 +98,19 @@ export function deriveRatios(t: MetricTotals): Record<string, number | null> {
   for (const key of resultColumns(t)) {
     out[`cost_per_${key}`] = t[key] ? round(spend / t[key], 2) : null;
   }
+  const purchaseValue = t['action_values.omni_purchase'] ?? t['action_values.purchase'] ?? t['action_values.offsite_conversion.fb_pixel_purchase'];
+  if (purchaseValue !== undefined) out.purchase_roas = spend ? round(purchaseValue / spend, 2) : null;
   return out;
 }
 
 /** Outcome counters present in the totals (everything that is not delivery). */
 export function resultColumns(t: MetricTotals): string[] {
-  return Object.keys(t).filter((k) => !DELIVERY_COLUMNS.has(k) && !k.includes('value'));
+  return Object.keys(t).filter((k) => {
+    if (k === 'actions.onsite_conversion.messaging_conversation_started_7d' && 'messaging_conversations_started' in t) return false;
+    if (k.startsWith('actions.')) return k in RESULT_ACTION_LABELS;
+    if (k.startsWith('action_values.')) return false;
+    return !DELIVERY_COLUMNS.has(k) && !k.includes('value');
+  });
 }
 
 function round(n: number, dp: number) {
@@ -104,5 +141,5 @@ export function deriveStatus(
 
 /** Human label for a metric column name, e.g. messaging_conversations_started -> "messaging conversations started". */
 export function metricLabel(key: string) {
-  return key.replace(/_/g, ' ');
+  return RESULT_ACTION_LABELS[key] ?? key.replace(/^actions\./, '').replace(/[_.]/g, ' ');
 }
