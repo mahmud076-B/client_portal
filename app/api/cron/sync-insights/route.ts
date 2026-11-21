@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
 import { rebaseSnapshotTotals, recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
-import { findInsightGap, isIsoDay } from '@/lib/meta/server/backfill';
+import { findInsightGap, isIsoDay, markBackfilled } from '@/lib/meta/server/backfill';
+import { toInsightRow, upsertInsightRows } from '@/lib/meta/server/insight-rows';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for syncing
@@ -345,13 +346,17 @@ export async function GET(request: Request) {
                         targetDates.push(formatCanonical(d2Date)); // D2
                     }
 
+                    let gapCampaignIds: string[] = [];
                     // Auto-backfill days missing for live campaigns (e.g. while the token was expired),
                     // otherwise lifetime spend/results stay below Ads Manager forever.
                     if (!manualRange && !specificDate) {
                         try {
                             const gap = await findInsightGap(supabase, { adAccountId: adAccount.id, timeZone: tz });
                             // First, so the Live Updates baseline can be rebased right after it (see below).
-                            if (gap) targetDates.unshift(`${gap.since}..${gap.until}`);
+                            if (gap) {
+                                targetDates.unshift(`${gap.since}..${gap.until}`);
+                                gapCampaignIds = gap.campaignIds;
+                            }
                         } catch (gapErr: any) {
                             console.warn(`[Sync] gap check failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
                         }
@@ -420,52 +425,13 @@ export async function GET(request: Request) {
                                 campaignIdMap.set(camp.meta_campaign_id, camp.id);
                             }
 
-                            const insightsPayload = [];
-                            for (const insight of insights || []) {
+                            const insightsPayload = (insights || []).flatMap((insight) => {
                                 const internalCampaignId = campaignIdMap.get(insight.campaign_id);
-                                if (internalCampaignId) {
-                                    insightsPayload.push({
-                                        campaign_id: internalCampaignId,
-                                        date: insight.date,
-                                        impressions: insight.impressions,
-                                        clicks: insight.clicks,
-                                        spend: insight.spend,
-                                        reach: insight.reach,
-                                        cpc: insight.cpc,
-                                        cpm: insight.cpm,
-                                        ctr: insight.ctr,
-                                        messaging_conversations_started: insight.messaging_conversations_started,
-                                        cost_per_messaging_conversation: insight.cost_per_messaging_conversation,
-                                        actions: insight.actions,
-                                        action_values: insight.action_values,
-                                        cost_per_action_type: insight.cost_per_action_type,
-                                        video_thruplays: insight.video_thruplays,
-                                        frequency: insight.frequency,
-                                        updated_at: new Date().toISOString()
-                                    });
-                                }
-                            }
-
-                            if (insightsPayload.length > 0) {
-                                let { error: upsertError } = await supabase
-                                    .from('campaign_insights')
-                                    .upsert(insightsPayload, {
-                                        onConflict: 'campaign_id,date',
-                                        ignoreDuplicates: false
-                                    });
-
-                                // Migration 20261122000000 not applied yet → store the legacy columns only.
-                                if (upsertError && isMissingColumnError(upsertError)) {
-                                    console.warn('[Sync] campaign_insights result columns missing; apply migration 20261122000000_campaign_results.sql');
-                                    const legacyPayload = insightsPayload.map(({ actions, action_values, cost_per_action_type, video_thruplays, frequency, ...rest }) => rest);
-                                    ({ error: upsertError } = await supabase
-                                        .from('campaign_insights')
-                                        .upsert(legacyPayload, { onConflict: 'campaign_id,date', ignoreDuplicates: false }));
-                                }
-
-                                if (upsertError) {
-                                    throw new Error(`Upsert error: ${upsertError.message}`);
-                                }
+                                return internalCampaignId ? [toInsightRow(insight, internalCampaignId)] : [];
+                            });
+                            await upsertInsightRows(supabase, insightsPayload);
+                            if (rangeStart !== rangeEnd && gapCampaignIds.length) {
+                                await markBackfilled(supabase, gapCampaignIds, rangeEnd);
                             }
 
                             await supabase.from('sync_logs').insert({

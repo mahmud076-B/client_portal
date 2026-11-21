@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/supabase/auth';
+import { requireAdminPage } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
 import { deriveDeliveryStatus } from '@/lib/meta/results';
@@ -39,7 +39,7 @@ const Icon = {
 };
 
 export default async function AdminDashboardPage() {
-  const { profile } = await requireAdmin();
+  const { profile } = await requireAdminPage();
   const counts = await loadCounts(profile.organization_id);
   const firstName = profile.full_name?.split(' ')[0] || 'there';
   const show = (n?: number) => (counts ? nf.format(n ?? 0) : '—');

@@ -9,6 +9,7 @@ import Chart from 'chart.js/auto';
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
 import LiveUpdates from '@/components/events/LiveUpdates';
+import PageSkeleton from '@/components/ui/PageSkeleton';
 import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
 
 /**
@@ -85,6 +86,10 @@ export default function DashboardClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Range/campaign switches re-render on the server; dim the content instantly instead of looking frozen.
   const [navigating, startNavigation] = useTransition();
+  // Campaign being navigated to. Until its server render arrives, the previous campaign's
+  // numbers must not stay on screen under the new name (the "stale flash").
+  const [pendingCampaignId, setPendingCampaignId] = useState<string | null>(null);
+  const switching = navigating && pendingCampaignId !== null && pendingCampaignId !== selectedCampaign?.id;
   const greeting = useGreeting();
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   const delivery = deriveDeliveryStatus(selectedCampaign || {});
@@ -111,6 +116,7 @@ export default function DashboardClient({
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('campaignId', e.target.value);
+    setPendingCampaignId(e.target.value);
     startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
@@ -337,8 +343,10 @@ export default function DashboardClient({
           <p className="dash-sub">Here&apos;s how your campaign is performing right now.</p>
         </div>
         <div>
+          {!switching && <>
           <StatusBadge status={delivery} />
           <div style={{ marginTop: 6, fontSize: '.8125rem', color: 'var(--c500)' }}>{delivery.description}</div>
+          </>}
         </div>
       </div>
 
@@ -346,7 +354,7 @@ export default function DashboardClient({
         <div className="selector-group">
           <div className="selector-label">Campaign</div>
           {campaigns && campaigns.length > 1 ? (
-            <select className="selector-val" style={{ background: 'transparent', border: 'none', color: 'inherit', fontWeight: 'bold', outline: 'none', cursor: 'pointer', paddingRight: '10px' }} value={selectedCampaign?.id || ''} onChange={handleCampaignChange}>
+            <select className="selector-val" style={{ background: 'transparent', border: 'none', color: 'inherit', fontWeight: 'bold', outline: 'none', cursor: 'pointer', paddingRight: '10px' }} value={(switching ? pendingCampaignId : selectedCampaign?.id) || ''} onChange={handleCampaignChange}>
               {campaigns.map((c: any) => (
                 <option key={c.id} value={c.id} style={{ color: '#000' }}>{c.name}</option>
               ))}
@@ -382,6 +390,7 @@ export default function DashboardClient({
         </div>
       </div>
 
+      {switching ? <PageSkeleton kpis={4} /> : (<>
       <div className="kpi-section fade-up">
         <div className="section-eyebrow">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -448,15 +457,17 @@ export default function DashboardClient({
 
         <div className="kpi-grid-sec">
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CTR (link)</div>
-            <div className="kpi-sm-value">{aggregates?.ctr?.toFixed(2) || '0.00'}%</div>
+            <div className="kpi-sm-label" title="Link clicks ÷ impressions (Ads Manager: CTR (link click-through rate))">CTR (link click-through rate)</div>
+            <div className="kpi-sm-value">{aggregates?.ctr != null ? `${aggregates.ctr.toFixed(2)}%` : '—'}</div>
+            {aggregates?.ctrAll != null && <div className="kpi-sm-sub">CTR (all): {aggregates.ctrAll.toFixed(2)}%</div>}
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPC (link)</div>
+            <div className="kpi-sm-label" title="Spend ÷ link clicks (Ads Manager: CPC (cost per link click))">CPC (cost per link click)</div>
             <div className="kpi-sm-value">{fmtMoney(aggregates?.cpc)}</div>
+            {aggregates?.cpcAll != null && <div className="kpi-sm-sub">CPC (all): {fmtMoney(aggregates.cpcAll)}</div>}
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPM</div>
+            <div className="kpi-sm-label">CPM (cost per 1,000 impressions)</div>
             <div className="kpi-sm-value">{fmtMoney(aggregates?.cpm)}</div>
           </div>
           {result?.spec?.valueTypes ? (
@@ -556,7 +567,7 @@ export default function DashboardClient({
 
         <div className="col-right">
           
-          <LiveUpdates key={selectedCampaign?.id ?? 'none'} campaignId={selectedCampaign?.id ?? null} />
+          <LiveUpdates key={selectedCampaign?.id ?? 'none'} campaignId={selectedCampaign?.id ?? null} initialLastSyncedAt={lastSyncedAt} />
 
           <div className="activity-card fade-up">
             <div className="card-title">
@@ -576,6 +587,7 @@ export default function DashboardClient({
 
         </div>
       </div>
+      </>)}
       </>)}
     </main>
   </div>

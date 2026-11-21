@@ -2,7 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { UserProfile } from '@/lib/supabase/auth';
-import { deriveRatios, sumInsights } from '@/lib/campaigns/metrics';
+import { deriveRatios, sumInsights, sumLinkClicks } from '@/lib/campaigns/metrics';
 import { deriveDeliveryStatus, objectiveLabel } from '@/lib/meta/results';
 import { dayOverDay, localDay, type InsightDayRow } from '@/lib/events/performance-insights';
 
@@ -142,7 +142,9 @@ export async function getCampaignMetrics(
       days_with_data: rows?.length ?? 0,
     },
     totals,
-    derived: deriveRatios(totals),
+    // Ads Manager definitions: cpc_link/ctr_link_percent are "CPC (cost per link click)" /
+    // "CTR (link click-through rate)"; *_all use Clicks (all).
+    derived: deriveRatios(totals, sumLinkClicks(rows || [])),
     note:
       'Reach is summed from daily rows and over-counts unique people across days. ' +
       'Days with no row mean no data was synced for that date.',
@@ -224,7 +226,7 @@ export async function getPerformanceSnapshot(scope: Scope, opts: { limit?: numbe
   const since = new Date(Date.now() - 10 * 86400_000).toISOString().slice(0, 10);
   const { data: rows } = await scope.supabase
     .from('campaign_insights')
-    .select('campaign_id, date, impressions, reach, clicks, spend, actions, action_values, video_thruplays')
+    .select('campaign_id, date, impressions, reach, clicks, inline_link_clicks, spend, actions, action_values, video_thruplays')
     .in('campaign_id', live.map((c) => c.id))
     .gte('date', since)
     .order('date', { ascending: true })

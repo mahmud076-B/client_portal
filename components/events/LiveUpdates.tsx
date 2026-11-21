@@ -61,9 +61,16 @@ function EventIcon({ type }: { type: FeedEvent['type'] }) {
  * Mount with `key={campaignId}` so switching campaigns never shows the previous
  * campaign's events while the new ones load.
  */
-export default function LiveUpdates({ campaignId }: { campaignId: string | null }) {
+export default function LiveUpdates({
+  campaignId,
+  initialLastSyncedAt = null,
+}: {
+  campaignId: string | null;
+  /** Server-rendered last successful sync of this campaign's ad account (shown before the feed loads). */
+  initialLastSyncedAt?: string | null;
+}) {
   const [events, setEvents] = useState<FeedEvent[] | null>(campaignId ? null : []);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(initialLastSyncedAt);
   const [summary, setSummary] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -83,7 +90,7 @@ export default function LiveUpdates({ campaignId }: { campaignId: string | null 
       );
       setEvents(list);
       setPolling(true);
-      setLastSyncedAt(data.lastSyncedAt ?? null);
+      setLastSyncedAt((prev) => data.lastSyncedAt ?? prev);
     } catch {
       setPolling(false);
       setEvents((prev) => prev ?? []);

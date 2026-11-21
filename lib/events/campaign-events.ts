@@ -330,7 +330,7 @@ export async function buildAccountPerformanceEvents(
   for (let from = 0; ; from += PAGE) {
     const { data: rows, error: insErr } = await supabase
       .from('campaign_insights')
-      .select('campaign_id, date, impressions, reach, clicks, spend, actions, action_values, video_thruplays')
+      .select('campaign_id, date, impressions, reach, clicks, inline_link_clicks, spend, actions, action_values, video_thruplays')
       .in('campaign_id', live.map((c) => c.id))
       .gte('date', since)
       .order('date', { ascending: true })
