@@ -31,7 +31,7 @@ function isRatioColumn(key: string) {
 }
 
 /** Columns describing delivery/spend rather than outcomes. */
-const DELIVERY_COLUMNS = new Set(['spend', 'impressions', 'reach', 'clicks']);
+const DELIVERY_COLUMNS = new Set(['spend', 'impressions', 'reach', 'clicks', 'inline_link_clicks']);
 
 export type InsightRow = Record<string, unknown>;
 export type MetricTotals = Record<string, number>;
@@ -87,13 +87,54 @@ export function sumInsights(rows: InsightRow[]): MetricTotals {
   return totals;
 }
 
-/** Derived ratios (CPC/CPM/CTR and cost per each result column). */
-export function deriveRatios(t: MetricTotals): Record<string, number | null> {
+/**
+ * Link clicks of ONE daily row, as Ads Manager's "Link clicks": Meta's
+ * inline_link_clicks when synced, else the `link_click` action (same number on
+ * rows synced before inline_link_clicks was stored). Never "Clicks (all)".
+ */
+export function rowLinkClicks(row: InsightRow): number {
+  const inline = toNumber(row.inline_link_clicks);
+  if (inline !== null) return inline;
+  const actions = row.actions;
+  if (!Array.isArray(actions)) return 0;
+  const hit = (actions as { action_type?: string; value?: unknown }[]).find((a) => a?.action_type === 'link_click');
+  return hit ? toNumber(hit.value) ?? 0 : 0;
+}
+
+export function sumLinkClicks(rows: InsightRow[]): number {
+  return rows.reduce((s, r) => s + rowLinkClicks(r), 0);
+}
+
+/**
+ * Ads Manager definitions, always ratios of period SUMS (never an average of daily ratios):
+ *   CPC (cost per link click)      = spend / link clicks
+ *   CTR (link click-through rate)  = link clicks / impressions × 100
+ *   CPC (all) / CTR (all)          = same with Clicks (all)
+ *   CPM (cost per 1,000 impressions) = spend / impressions × 1000
+ */
+export function linkMetrics(t: { spend: number; impressions: number; clicks: number; linkClicks: number }) {
+  return {
+    cpc_link: t.linkClicks > 0 ? t.spend / t.linkClicks : null,
+    ctr_link_percent: t.impressions > 0 ? (t.linkClicks / t.impressions) * 100 : null,
+    cpc_all: t.clicks > 0 ? t.spend / t.clicks : null,
+    ctr_all_percent: t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null,
+    cpm: t.impressions > 0 ? (t.spend / t.impressions) * 1000 : null,
+  };
+}
+
+/** Derived ratios (Ads Manager CPC/CTR definitions, CPM, and cost per each result column). */
+export function deriveRatios(t: MetricTotals, linkClicks?: number): Record<string, number | null> {
   const spend = t.spend ?? 0;
+  const link = linkClicks ?? t.inline_link_clicks ?? t['actions.link_click'] ?? 0;
+  const m = linkMetrics({ spend, impressions: t.impressions ?? 0, clicks: t.clicks ?? 0, linkClicks: link });
+  const r4 = (v: number | null) => (v === null ? null : round(v, 4));
   const out: Record<string, number | null> = {
-    ctr_percent: t.impressions ? round((t.clicks ?? 0) / t.impressions * 100, 2) : null,
-    cpc: t.clicks ? round(spend / t.clicks, 2) : null,
-    cpm: t.impressions ? round(spend / t.impressions * 1000, 2) : null,
+    link_clicks: link,
+    cpc_link: r4(m.cpc_link),
+    ctr_link_percent: r4(m.ctr_link_percent),
+    cpc_all: r4(m.cpc_all),
+    ctr_all_percent: r4(m.ctr_all_percent),
+    cpm: m.cpm === null ? null : round(m.cpm, 2),
   };
   for (const key of resultColumns(t)) {
     out[`cost_per_${key}`] = t[key] ? round(spend / t[key], 2) : null;

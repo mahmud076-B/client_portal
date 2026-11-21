@@ -440,6 +440,7 @@
       font-family: var(--fh); font-size: 1.25rem; font-weight: 800;
       letter-spacing: -.025em; color: var(--c900);
     }
+    .kpi-sm-sub { margin-top: .25rem; font-size: .7rem; font-weight: 500; color: var(--c500); }
 
     /* ═══════════════════════════════════════════════════════════
        PERFORMANCE CHART

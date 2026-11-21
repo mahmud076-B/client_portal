@@ -6,7 +6,7 @@ import { addDays, dayIn } from '@/lib/dates';
  * `have` holds "campaignId:YYYY-MM-DD" keys.
  */
 export function computeInsightGap(params: {
-    campaigns: { id: string; start_time?: string | null; end_time?: string | null }[];
+    campaigns: { id: string; start_time?: string | null; end_time?: string | null; insights_backfilled_through?: string | null }[];
     have: Set<string>;
     windowStart: string;
     windowEnd: string;
@@ -18,7 +18,10 @@ export function computeInsightGap(params: {
     for (const c of campaigns) {
         const start = c.start_time ? dayIn(timeZone, new Date(c.start_time)) : windowStart;
         const end = c.end_time ? dayIn(timeZone, new Date(c.end_time)) : windowEnd;
-        const from = start > windowStart ? start : windowStart;
+        // Days already asked for: a missing row there means zero delivery, not a sync gap.
+        const checked = c.insights_backfilled_through ? addDays(c.insights_backfilled_through, 1) : null;
+        let from = start > windowStart ? start : windowStart;
+        if (checked && checked > from) from = checked;
         const to = end < windowEnd ? end : windowEnd;
         for (let d = from; d <= to; d = addDays(d, 1)) {
             if (!have.has(`${c.id}:${d}`)) {

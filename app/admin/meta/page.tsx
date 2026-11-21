@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/supabase/auth';
+import { requireAdminPage } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import AdAccountsManager from './AdAccountsManager';
@@ -7,7 +7,7 @@ import './meta-tailwind.css';
 
 export default async function MetaAdminPage() {
     // Ensure only admins can access this page
-    const { profile } = await requireAdmin();
+    const { profile } = await requireAdminPage();
 
     const supabase = await createClient();
     

@@ -37,4 +37,21 @@ describe('performance commentary', () => {
     const late = buildPerformanceInsights({ campaign, rows: [...base, row('2026-11-22', 90)], today: '2026-11-22', dayFraction: 0.9, currency: 'USD', now });
     expect(early.map((e) => e.title)).toEqual(late.map((e) => e.title));
   });
+
+  it('CTR commentary uses LINK clicks (Ads Manager "CTR (link)"), never clicks (all)', () => {
+    // Clicks (all) 1,060 / 7,500 = 14.13% vs 859 / 7,500 = 11.45% was the old, wrong headline.
+    const rows = [
+      row('2026-11-20', 50, { clicks: 859, inline_link_clicks: 140 }),
+      row('2026-11-21', 50, { clicks: 1060, inline_link_clicks: 143 }),
+    ];
+    const out = buildPerformanceInsights({ campaign, rows, today: '2026-11-22', dayFraction: 0.5, currency: 'USD', now });
+    const text = out.map((e) => `${e.title} ${e.body}`).join(' ');
+    expect(text).not.toMatch(/14\.13%|11\.45%/);
+    expect(out.find((e) => e.kind === 'ctr_up')).toBeUndefined(); // 1.87% -> 1.91% is not news
+    const shift = buildPerformanceInsights({
+      campaign, today: '2026-11-22', dayFraction: 0.5, currency: 'USD', now,
+      rows: [row('2026-11-20', 50, { inline_link_clicks: 100 }), row('2026-11-21', 50, { inline_link_clicks: 150 })],
+    }).find((e) => e.kind === 'ctr_up')!;
+    expect(shift.body).toBe('CTR (link) 2.00% on 21 Nov (1.33% the day before).');
+  });
 });

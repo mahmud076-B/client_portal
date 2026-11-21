@@ -74,7 +74,8 @@ describe('buildDashboardTotals', () => {
     expect(totals.spend).toBe(0);
     expect(totals.cpc).toBeNull();
     expect(totals.cpm).toBeNull();
-    expect(totals.ctr).toBe(0);
+    expect(totals.ctr).toBeNull();
+    expect(totals.ctrAll).toBeNull();
     expect(result?.costPerResult ?? null).toBeNull();
   });
 

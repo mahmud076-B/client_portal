@@ -6,6 +6,10 @@ import { MetaServerClient } from '@/lib/meta/server/client';
 import { revalidatePath } from 'next/cache';
 import { inspectAccessToken } from '@/lib/meta/server/oauth';
 import { encryptToken } from '@/lib/meta/server/crypto';
+import { MetaInsightsClient } from '@/lib/meta/server/insights';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { toInsightRow, upsertInsightRows } from '@/lib/meta/server/insight-rows';
+import { dayIn } from '@/lib/dates';
 
 /**
  * Discovers Ad Accounts using the connected Meta API.
@@ -262,6 +266,16 @@ export async function registerCampaign(metaCampaignId: string, localAdAccountId:
             return { success: false, error: 'Failed to register campaign due to a database error.' };
         }
 
+        // Backfill the campaign's daily insights right away. Otherwise the chart shows
+        // "No performance data" and Live Updates "Waiting for the first sync" until the next
+        // cron run, and the cron only re-reads D0–D2 so earlier days depend on the gap check.
+        await backfillCampaignInsights({
+            connection,
+            adAccount,
+            metaCampaignId: targetCampaign.meta_campaign_id,
+            startTime: targetCampaign.start_time ?? null,
+        }).catch((e) => console.warn(`[registerCampaign] insights backfill failed: ${e?.message || e}`));
+
         revalidatePath('/admin/meta');
         return { success: true };
 
@@ -389,4 +403,39 @@ export async function saveSystemUserToken(_prev: SystemTokenState, formData: For
             ? `Connected as ${who}. Note: this token expires on ${new Date(inspected.expiresAt).toUTCString()}.`
             : `Connected as ${who}. This token never expires.`,
     };
+}
+
+/** Lifetime daily insights for one just-registered campaign (service role write). */
+async function backfillCampaignInsights(params: {
+    connection: { iv: string; encrypted_token: string; auth_tag: string };
+    adAccount: { id: string; meta_ad_account_id: string; timezone_name?: string | null };
+    metaCampaignId: string;
+    startTime: string | null;
+}) {
+    const tz = params.adAccount.timezone_name || 'UTC';
+    const until = dayIn(tz);
+    // Meta caps insights history at 37 months; campaigns here are days to weeks old.
+    const since = params.startTime ? dayIn(tz, new Date(params.startTime)) : until;
+    const client = new MetaInsightsClient({
+        iv: params.connection.iv,
+        encryptedToken: params.connection.encrypted_token,
+        authTag: params.connection.auth_tag,
+    });
+    const insights = await client.getDailyCampaignInsights(
+        params.adAccount.meta_ad_account_id,
+        { since: since <= until ? since : until, until },
+        { campaignIds: [params.metaCampaignId] }
+    );
+    const admin = createAdminClient();
+    const { data: campaign } = await admin
+        .from('campaigns')
+        .select('id')
+        .eq('meta_campaign_id', params.metaCampaignId)
+        .eq('ad_account_id', params.adAccount.id)
+        .single();
+    if (!campaign) return;
+    await upsertInsightRows(
+        admin,
+        insights.filter((i) => i.campaign_id === params.metaCampaignId).map((i) => toInsightRow(i, campaign.id))
+    );
 }

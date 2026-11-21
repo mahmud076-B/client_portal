@@ -23,4 +23,10 @@ describe('computeInsightGap (auto-backfill of days missed while syncs were down)
     const have = new Set(['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19'].map((d) => `x:${d}`));
     expect(computeInsightGap({ ...base, campaigns: c, have })).toBeNull();
   });
+  it('days already asked from Meta (zero delivery -> no row) are not refetched every run', () => {
+    const c = [{ id: 'idle', start_time: '2026-10-20T00:00:00+0600', insights_backfilled_through: '2026-11-19' }];
+    expect(computeInsightGap({ ...base, campaigns: c, have: new Set() })).toBeNull();
+    const c2 = [{ id: 'idle', start_time: '2026-10-20T00:00:00+0600', insights_backfilled_through: '2026-11-17' }];
+    expect(computeInsightGap({ ...base, campaigns: c2, have: new Set() })).toEqual({ since: '2026-11-18', until: '2026-11-19' });
+  });
 });

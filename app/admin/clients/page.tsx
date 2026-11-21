@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/supabase/auth';
+import { requireAdminPage } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import ClientManager from './ClientManager';
 import ClientActions from './ClientActions';
@@ -11,7 +11,7 @@ export const metadata = {
 
 export default async function ClientsPage() {
   // 1. Enforce Admin Authorization
-  const { profile } = await requireAdmin();
+  const { profile } = await requireAdminPage();
 
   // 2. All reads in parallel (they were 5 sequential round-trips).
   const supabase = await createClient();

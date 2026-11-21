@@ -1,6 +1,5 @@
 import '@/app/dashboard/dashboard.css';
-import { requireAdmin } from '@/lib/supabase/auth';
-import { redirect } from 'next/navigation';
+import { requireAdminPage } from '@/lib/supabase/auth';
 import AdminShell from './AdminShell';
 import AssistantMount from '@/components/ai/AssistantMount';
 
@@ -9,12 +8,7 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let session;
-  try {
-    session = await requireAdmin();
-  } catch (error) {
-    redirect('/login');
-  }
+  const session = await requireAdminPage();
 
   return (
     <>

@@ -16,16 +16,21 @@ export { addDays, dayIn, isIsoDay };
 export async function findInsightGap(
     supabase: SupabaseClient,
     params: { adAccountId: string; timeZone: string; lookbackDays?: number; now?: Date }
-): Promise<{ since: string; until: string } | null> {
+): Promise<{ since: string; until: string; campaignIds: string[] } | null> {
     const today = dayIn(params.timeZone, params.now);
     const windowStart = addDays(today, -(params.lookbackDays ?? 90));
     const windowEnd = addDays(today, -3);
     if (windowEnd < windowStart) return null;
 
-    const { data: campaigns, error } = await supabase
+    const base = 'id, status, effective_status, start_time, end_time';
+    let { data: campaigns, error } = await supabase
         .from('campaigns')
-        .select('id, status, effective_status, start_time, end_time')
+        .select(`${base}, insights_backfilled_through`)
         .eq('ad_account_id', params.adAccountId);
+    if (error) {
+        // Migration 20261127000000 not applied yet.
+        ({ data: campaigns, error } = (await supabase.from('campaigns').select(base).eq('ad_account_id', params.adAccountId)) as any);
+    }
     if (error || !campaigns?.length) return null;
 
     const live = campaigns.filter((c) => (c.effective_status || c.status || '').toUpperCase() === 'ACTIVE');
@@ -40,11 +45,19 @@ export async function findInsightGap(
         .limit(5000);
     if (rowsErr) return null;
 
-    return computeInsightGap({
+    const gap = computeInsightGap({
         campaigns: live,
         have: new Set((rows || []).map((r) => `${r.campaign_id}:${r.date}`)),
         windowStart,
         windowEnd,
         timeZone: params.timeZone,
     });
+    return gap ? { ...gap, campaignIds: live.map((c) => c.id) } : null;
+}
+
+/** Records that Meta was asked for these campaigns' days through `until` (see insights_backfilled_through). */
+export async function markBackfilled(supabase: SupabaseClient, campaignIds: string[], until: string) {
+    if (campaignIds.length === 0) return;
+    const { error } = await supabase.from('campaigns').update({ insights_backfilled_through: until }).in('id', campaignIds);
+    if (error) console.warn(`[Sync] could not record backfill marker: ${error.message}`);
 }

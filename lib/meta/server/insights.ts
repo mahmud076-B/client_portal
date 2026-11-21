@@ -7,6 +7,8 @@ export interface NormalizedCampaignInsight {
     impressions: number | null;
     reach: number | null;
     clicks: number | null;
+    /** Ads Manager "Link clicks" (clicks (all) also counts likes, comments, profile clicks...). */
+    inline_link_clicks: number | null;
     spend: number | null;
     cpc: number | null;
     cpm: number | null;
@@ -86,18 +88,22 @@ export class MetaInsightsClient {
      */
     async getDailyCampaignInsights(
         metaAdAccountId: string,
-        timeRange: { since: string; until: string }
+        timeRange: { since: string; until: string },
+        opts: { campaignIds?: string[] } = {}
     ): Promise<NormalizedCampaignInsight[]> {
         const accountIdStr = metaAdAccountId.startsWith('act_') ? metaAdAccountId : `act_${metaAdAccountId}`;
         let insights: NormalizedCampaignInsight[] = [];
         
-        const initialParams = {
+        const initialParams: Record<string, string> = {
             level: 'campaign',
-            fields: 'campaign_id,impressions,reach,frequency,clicks,spend,cpc,cpm,ctr,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
+            fields: 'campaign_id,impressions,reach,frequency,clicks,inline_link_clicks,spend,cpc,cpm,ctr,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
             time_range: JSON.stringify(timeRange),
             // One row per campaign per DAY (ranged backfills rely on this; a no-op for single days).
             time_increment: '1'
         };
+        if (opts.campaignIds?.length) {
+            initialParams.filtering = JSON.stringify([{ field: 'campaign.id', operator: 'IN', value: opts.campaignIds }]);
+        }
 
         try {
             let nextEndpoint: string | null = `/${accountIdStr}/insights`;
@@ -151,6 +157,7 @@ export class MetaInsightsClient {
                             impressions: this.parseNumeric(row.impressions, true),
                             reach: this.parseNumeric(row.reach, true),
                             clicks: this.parseNumeric(row.clicks, true),
+                            inline_link_clicks: this.parseNumeric(row.inline_link_clicks, true),
                             spend: this.parseNumeric(row.spend),
                             cpc: this.parseNumeric(row.cpc),
                             cpm: this.parseNumeric(row.cpm),

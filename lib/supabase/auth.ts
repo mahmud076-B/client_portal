@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { redirect } from 'next/navigation';
 import { createClient } from './server';
 
 export type UserRole = 'super_admin' | 'admin' | 'client';
@@ -112,4 +113,17 @@ export async function requireClient() {
     profile: result.profile,
     client: result.client, // guaranteed non-null
   };
+}
+
+/**
+ * For admin pages/layouts: admins pass; signed-in non-admins go straight to their own
+ * dashboard (one redirect, instead of /login -> /auth/redirect -> /dashboard, which took
+ * ~7.5 s); signed-out users go to /login. Cheap: getCurrentProfile is per-request cached,
+ * so the layout and the page share one lookup.
+ */
+export async function requireAdminPage() {
+  const result = await getCurrentProfile();
+  if (!result.user || !result.profile) redirect('/login');
+  if (result.profile.role !== 'admin' && result.profile.role !== 'super_admin') redirect('/dashboard');
+  return result as { user: any; profile: UserProfile; client: ClientRecord | null };
 }

@@ -9,6 +9,7 @@
  *   (daily reach is not additive), never mixed with a different source.
  */
 import { addDays } from '@/lib/dates';
+import { linkMetrics, rowLinkClicks } from '@/lib/campaigns/metrics';
 import { computeResult, resolveResultSpec, resolveResultSpecForData, type ComputedResult, type InsightRow, type ResultSpec } from '@/lib/meta/results';
 
 export type DashboardRange = 'today' | '7' | '14' | '30' | 'maximum';
@@ -52,17 +53,14 @@ export interface DashboardTotals {
     /** Cost per LINK click, as Ads Manager's "CPC (cost per link click)". */
     cpc: number | null;
     cpm: number | null;
-    /** Link click-through rate (%), as Ads Manager's "CTR (link click-through rate)". */
-    ctr: number;
+    /** Link click-through rate (%), as Ads Manager's "CTR (link click-through rate)". null = no impressions. */
+    ctr: number | null;
+    /** Ads Manager "CPC (all)" and "CTR (all)" (all clicks), for views that use those columns. */
+    cpcAll: number | null;
+    ctrAll: number | null;
     source: 'meta' | 'synced';
 }
 
-/** link_click from a Meta actions array (0 when absent). */
-function linkClicksOf(actions: unknown): number {
-    if (!Array.isArray(actions)) return 0;
-    const hit = (actions as { action_type?: string; value?: unknown }[]).find((a) => a?.action_type === 'link_click');
-    return hit ? Number(hit.value) || 0 : 0;
-}
 
 const num = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0);
 
@@ -79,7 +77,7 @@ export function buildDashboardTotals(params: {
             spend: s.spend + num(r.spend),
             impressions: s.impressions + num(r.impressions),
             clicks: s.clicks + num(r.clicks),
-            linkClicks: s.linkClicks + linkClicksOf(r.actions),
+            linkClicks: s.linkClicks + rowLinkClicks(r as unknown as Record<string, unknown>),
             messaging: s.messaging + num(r.messaging_conversations_started),
         }),
         { spend: 0, impressions: 0, clicks: 0, linkClicks: 0, messaging: 0 }
@@ -122,9 +120,10 @@ export function buildDashboardTotals(params: {
             clicks,
             linkClicks,
             frequency,
-            cpc: linkClicks > 0 ? spend / linkClicks : null,
-            cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
-            ctr: impressions > 0 ? (linkClicks / impressions) * 100 : 0,
+            ...(() => {
+                const m = linkMetrics({ spend, impressions, clicks, linkClicks });
+                return { cpc: m.cpc_link, ctr: m.ctr_link_percent, cpcAll: m.cpc_all, ctrAll: m.ctr_all_percent, cpm: m.cpm };
+            })(),
             source: meta ? 'meta' : 'synced',
         },
         resultSpec,

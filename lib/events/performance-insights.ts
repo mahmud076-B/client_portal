@@ -1,5 +1,6 @@
 import { computeResult, deriveDeliveryStatus, resolveResultSpecForData, type InsightRow } from '@/lib/meta/results';
 import { addDays } from '@/lib/dates';
+import { rowLinkClicks } from '@/lib/campaigns/metrics';
 import { formatDay, formatMoney } from '@/lib/format';
 
 /**
@@ -28,7 +29,7 @@ export interface PerformanceEvent {
   weight: number;
 }
 
-export type InsightDayRow = InsightRow & { clicks?: number | string | null };
+export type InsightDayRow = InsightRow & { clicks?: number | string | null; inline_link_clicks?: number | string | null };
 
 export interface CampaignForInsights {
   id: string;
@@ -54,13 +55,14 @@ const pct = (a: number, b: number) => (b > 0 ? (a - b) / b : null);
 const mag = (p: number) => Math.min(Math.abs(p), 0.5) * 100;
 const fmtPct = (p: number) => `${Math.round(Math.abs(p) * 100)}%`;
 
+/** `clicks` = LINK clicks, so CTR here is Ads Manager's "CTR (link click-through rate)", same as the dashboard. */
 interface DayStats { impressions: number; reach: number; clicks: number; spend: number; results: number }
 
 function dayStats(row: InsightDayRow, results: number, scale = 1): DayStats {
   return {
     impressions: n(row.impressions) * scale,
     reach: n(row.reach) * scale,
-    clicks: n(row.clicks) * scale,
+    clicks: rowLinkClicks(row as unknown as Record<string, unknown>) * scale,
     spend: n(row.spend) * scale,
     results: results * scale,
   };
@@ -280,8 +282,8 @@ export function buildPerformanceInsights(params: {
         type: up ? 'performance_up' : 'performance_down',
         severity: up ? 'success' : 'info',
         kind: up ? 'ctr_up' : 'ctr_down',
-        title: `${name}: click-through rate ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`,
-        body: `CTR ${(ctr * 100).toFixed(2)}% on ${dayTxt}${ctrPrev !== null ? ` (${(ctrPrev * 100).toFixed(2)}% the day before)` : ''}.`,
+        title: `${name}: link click-through rate ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`,
+        body: `CTR (link) ${(ctr * 100).toFixed(2)}% on ${dayTxt}${ctrPrev !== null ? ` (${(ctrPrev * 100).toFixed(2)}% the day before)` : ''}.`,
         metadata: { metric: 'ctr', change: b.change, vs: b.vs, latest: ctr, previous: ctrPrev, avg7: ctr7, day: latestRow.date },
         weight: 50 + mag(b.change),
       });
@@ -360,7 +362,7 @@ export function coachLine(items: DayOverDay[]): string | null {
       add(c.results, d.result_label ?? 'results');
       add(c.cost_per_result, 'cost per result', false);
       add(c.reach, 'reach');
-      add(c.ctr, 'CTR');
+      add(c.ctr, 'link CTR');
       return { d, good, bad, score: good.length - bad.length + ((c.results ?? 0) > 0 ? 1 : (c.results ?? 0) < 0 ? -1 : 0) };
     })
     .filter((x) => x.good.length + x.bad.length > 0);
