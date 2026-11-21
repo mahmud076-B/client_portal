@@ -547,10 +547,14 @@ export async function GET(request: Request) {
             );
         }
         const failed = syncResults.filter((r: any) => r?.status === 'failed');
+        const succeeded = syncResults.filter((r: any) => r?.status === 'success');
         if (failed.length > 0) {
+            // Partial failure (e.g. one broken ad account) -> 207: still 2xx, so the Azure Logic App's
+            // retry policy does not re-run the WHOLE sync a minute later (it did after every 502).
+            // Total failure stays 502 so the scheduler surfaces it.
             return NextResponse.json(
-                { success: false, failed: failed.length, total: syncResults.length, results: syncResults },
-                { status: 502 }
+                { success: false, partial: succeeded.length > 0, failed: failed.length, total: syncResults.length, results: syncResults },
+                { status: succeeded.length > 0 ? 207 : 502 }
             );
         }
         return NextResponse.json({ success: true, results: syncResults });
