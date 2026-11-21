@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { deriveDeliveryStatus, objectiveLabel } from '@/lib/meta/results';
 import { discoverCampaigns, registerCampaign, assignCampaign } from './actions';
 
 export default function CampaignsManager({
@@ -135,17 +136,23 @@ export default function CampaignsManager({
                                                     <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
                                                         {campaign.meta_campaign_id}
                                                     </span>
-                                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                                        (campaign.effective_status || campaign.status) === 'ACTIVE' 
-                                                        ? 'bg-green-100 text-green-700' 
-                                                        : 'bg-gray-100 text-gray-600'
-                                                    }`}>
-                                                        {campaign.effective_status || campaign.status}
-                                                    </span>
+                                                    {(() => {
+                                                        const ds = deriveDeliveryStatus(campaign);
+                                                        const tones: Record<string, [string, string]> = {
+                                                            green: ['#DCFCE7', '#15803D'], amber: ['#FEF3E6', '#B45309'], ink: ['#EFEAE6', '#24202C'],
+                                                            gray: ['#F3F4F6', '#4B5563'], red: ['#FEE2E2', '#B91C1C'], blue: ['#DBEAFE', '#1D4ED8'],
+                                                        };
+                                                        const [bg, fg] = tones[ds.tone];
+                                                        return (
+                                                            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: bg, color: fg }} title={ds.description}>
+                                                                {ds.label}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                     {campaign.objective && (
                                                         <span className="text-xs text-gray-500 flex items-center gap-1">
                                                             <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                                            {campaign.objective.replace(/_/g, ' ')}
+                                                            {objectiveLabel(campaign.objective, campaign.optimization_goal)}
                                                         </span>
                                                     )}
                                                 </div>

@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
+import { recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for syncing
+
+/** PostgREST "column does not exist" (PGRST204 schema cache / 42703 undefined_column). */
+function isMissingColumnError(err: { code?: string; message?: string }): boolean {
+    return err.code === 'PGRST204' || err.code === '42703' || /column .* does not exist|Could not find the .* column/i.test(err.message || '');
+}
 
 export async function GET(request: Request) {
     try {
@@ -39,14 +45,14 @@ export async function GET(request: Request) {
             throw new Error(`Failed to fetch meta connections: ${connError.message}`);
         }
 
-        const syncResults = [];
+        const syncResults: any[] = [];
 
         for (const conn of connections || []) {
             try {
                 // Fetch ad accounts for this organization
                 const { data: adAccounts, error: adError } = await supabase
                     .from('ad_accounts')
-                    .select('id, meta_ad_account_id, status, timezone_name')
+                    .select('id, meta_ad_account_id, status, timezone_name, currency')
                     .eq('organization_id', conn.organization_id)
                     .eq('status', 'active');
 
@@ -69,6 +75,9 @@ export async function GET(request: Request) {
                     if (adAccount.status !== 'active') continue;
 
                     if (connectionHasTokenError) break;
+
+                    // Snapshot for the Live Updates feed (never throws).
+                    const eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
 
                     // ============================================================
                     // STEP A: CAMPAIGN METADATA REFRESH (isolated — never skips insights)
@@ -98,6 +107,40 @@ export async function GET(request: Request) {
                             dbCampaignMap.set(dbCamp.meta_campaign_id, dbCamp.id);
                         }
 
+                        // Fetch every ad set of the account ONCE (used for ABO budgets + optimization_goal).
+                        const accountAdSets: any[] = [];
+                        {
+                            let nextAdSetEndpoint: string | null = `/${adAccount.meta_ad_account_id}/adsets`;
+                            let currentAdSetParams: Record<string, string> | undefined = {
+                                fields: 'id,campaign_id,name,status,effective_status,daily_budget,lifetime_budget,optimization_goal,end_time',
+                                limit: '200'
+                            };
+                            let adSetPageCount = 0;
+                            const MAX_ADSET_PAGES = 50;
+                            while (nextAdSetEndpoint && adSetPageCount < MAX_ADSET_PAGES) {
+                                adSetPageCount++;
+                                let responseData;
+                                if (nextAdSetEndpoint.startsWith('http')) {
+                                    const urlObj = new URL(nextAdSetEndpoint);
+                                    const parsedParams: Record<string, string> = {};
+                                    urlObj.searchParams.forEach((val, key) => {
+                                        if (key !== 'access_token') parsedParams[key] = val;
+                                    });
+                                    responseData = await metaClient.fetch(urlObj.pathname.replace(/\/v\d+\.\d+/, ''), parsedParams);
+                                } else {
+                                    responseData = await metaClient.fetch(nextAdSetEndpoint, currentAdSetParams || {});
+                                }
+                                if (responseData && Array.isArray(responseData.data)) accountAdSets.push(...responseData.data);
+                                const nextUrl = responseData?.paging?.next;
+                                nextAdSetEndpoint = nextUrl || null;
+                                currentAdSetParams = undefined;
+                            }
+                            if (adSetPageCount >= MAX_ADSET_PAGES) {
+                                throw new Error(`[MetadataRefresh] Reached max pagination for adsets on ${adAccount.meta_ad_account_id}. Aborting to prevent partial data sync.`);
+                            }
+                        }
+
+                        let optimizationGoalColumnMissing = false;
                         let updatedCount = 0;
 
                         for (const metaCampaign of metaCampaigns) {
@@ -117,47 +160,7 @@ export async function GET(request: Request) {
 
                             if (noDaily && noLifetime) {
                                 try {
-                                    // Fetch Ad Sets to aggregate active budgets with pagination
-                                    let allAdSets: any[] = [];
-                                    let nextAdSetEndpoint: string | null = `/${adAccount.meta_ad_account_id}/adsets`;
-                                    let currentAdSetParams: Record<string, string> | undefined = {
-                                        fields: 'id,campaign_id,name,status,daily_budget,lifetime_budget'
-                                    };
-                                    let adSetPageCount = 0;
-                                    const MAX_ADSET_PAGES = 50;
-
-                                    while (nextAdSetEndpoint && adSetPageCount < MAX_ADSET_PAGES) {
-                                        adSetPageCount++;
-                                        let isAbsolute = nextAdSetEndpoint.startsWith('http');
-                                        let responseData;
-                                        if (isAbsolute) {
-                                            const urlObj = new URL(nextAdSetEndpoint);
-                                            const parsedParams: Record<string, string> = {};
-                                            urlObj.searchParams.forEach((val, key) => {
-                                                if (key !== 'access_token') parsedParams[key] = val;
-                                            });
-                                            const pathname = urlObj.pathname.replace(/\/v\d+\.\d+/, '');
-                                            responseData = await metaClient.fetch(pathname, parsedParams);
-                                        } else {
-                                            responseData = await metaClient.fetch(nextAdSetEndpoint, currentAdSetParams || {});
-                                        }
-
-                                        if (responseData && Array.isArray(responseData.data)) {
-                                            allAdSets.push(...responseData.data);
-                                        }
-
-                                        const nextUrl = responseData?.paging?.next;
-                                        if (nextUrl) {
-                                            nextAdSetEndpoint = nextUrl;
-                                            currentAdSetParams = undefined;
-                                        } else {
-                                            nextAdSetEndpoint = null;
-                                        }
-                                    }
-
-                                    if (adSetPageCount >= MAX_ADSET_PAGES) {
-                                        throw new Error(`[MetadataRefresh] Reached max pagination for adsets on ${internalId}. Aborting to prevent partial data sync.`);
-                                    }
+                                    const allAdSets = accountAdSets;
 
                                     if (allAdSets.length > 0) {
                                         // Filter to only ACTIVE ad sets for this specific campaign
@@ -201,21 +204,52 @@ export async function GET(request: Request) {
 
                             // Update existing campaign metadata.
                             // Uses meta_campaign_id as identity to prevent duplication.
-                            const { error: updateError } = await supabase
-                                .from('campaigns')
-                                .update({
+                            // optimization_goal drives the "Result" metric (Ads Manager semantics): use the most
+                            // common goal among the campaign's live ad sets (any ad set if none is live).
+                            const campAdSets = accountAdSets.filter((as: any) => as.campaign_id === metaCampaign.meta_campaign_id);
+                            const liveAdSets = campAdSets.filter((as: any) => as.effective_status === 'ACTIVE' || as.status === 'ACTIVE');
+                            const goalCounts = new Map<string, number>();
+                            for (const as of (liveAdSets.length ? liveAdSets : campAdSets)) {
+                                if (as.optimization_goal) goalCounts.set(as.optimization_goal, (goalCounts.get(as.optimization_goal) || 0) + 1);
+                            }
+                            const optimizationGoal = [...goalCounts.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
+
+                            // Most campaigns are scheduled at the AD SET level (campaign stop_time stays null),
+                            // so a finished campaign would otherwise show "Active" forever. If the campaign has no
+                            // stop_time but every non-deleted ad set has an end_time, use the latest one.
+                            let effectiveEndTime: string | null = metaCampaign.end_time;
+                            if (!effectiveEndTime) {
+                                const scheduled = campAdSets.filter((as: any) => !['DELETED', 'ARCHIVED'].includes(String(as.status || '').toUpperCase()));
+                                if (scheduled.length > 0 && scheduled.every((as: any) => !!as.end_time)) {
+                                    const latest = Math.max(...scheduled.map((as: any) => new Date(as.end_time).getTime()));
+                                    if (Number.isFinite(latest)) effectiveEndTime = new Date(latest).toISOString();
+                                }
+                            }
+
+                            const campaignUpdate: Record<string, any> = {
                                     status: metaCampaign.status,
                                     effective_status: metaCampaign.effective_status,
                                     daily_budget: finalDailyBudget,
                                     lifetime_budget: finalLifetimeBudget,
                                     budget_source: budgetSource,
                                     start_time: metaCampaign.start_time,
-                                    end_time: metaCampaign.end_time,
+                                    end_time: effectiveEndTime,
                                     objective: metaCampaign.objective,
                                     buying_type: metaCampaign.buying_type,
                                     updated_at: new Date().toISOString()
-                                })
+                            };
+                            if (!optimizationGoalColumnMissing) campaignUpdate.optimization_goal = optimizationGoal;
+
+                            let { error: updateError } = await supabase
+                                .from('campaigns')
+                                .update(campaignUpdate)
                                 .eq('id', internalId);
+
+                            if (updateError && isMissingColumnError(updateError)) {
+                                optimizationGoalColumnMissing = true; // migration not applied yet
+                                delete campaignUpdate.optimization_goal;
+                                ({ error: updateError } = await supabase.from('campaigns').update(campaignUpdate).eq('id', internalId));
+                            }
 
                             if (updateError) {
                                 console.warn(`[MetadataRefresh] Failed to update campaign ${internalId}: ${updateError.message}`);
@@ -378,18 +412,32 @@ export async function GET(request: Request) {
                                         ctr: insight.ctr,
                                         messaging_conversations_started: insight.messaging_conversations_started,
                                         cost_per_messaging_conversation: insight.cost_per_messaging_conversation,
+                                        actions: insight.actions,
+                                        action_values: insight.action_values,
+                                        cost_per_action_type: insight.cost_per_action_type,
+                                        video_thruplays: insight.video_thruplays,
+                                        frequency: insight.frequency,
                                         updated_at: new Date().toISOString()
                                     });
                                 }
                             }
 
                             if (insightsPayload.length > 0) {
-                                const { error: upsertError } = await supabase
+                                let { error: upsertError } = await supabase
                                     .from('campaign_insights')
                                     .upsert(insightsPayload, {
                                         onConflict: 'campaign_id,date',
                                         ignoreDuplicates: false
                                     });
+
+                                // Migration 20261122000000 not applied yet → store the legacy columns only.
+                                if (upsertError && isMissingColumnError(upsertError)) {
+                                    console.warn('[Sync] campaign_insights result columns missing; apply migration 20261122000000_campaign_results.sql');
+                                    const legacyPayload = insightsPayload.map(({ actions, action_values, cost_per_action_type, video_thruplays, frequency, ...rest }) => rest);
+                                    ({ error: upsertError } = await supabase
+                                        .from('campaign_insights')
+                                        .upsert(legacyPayload, { onConflict: 'campaign_id,date', ignoreDuplicates: false }));
+                                }
 
                                 if (upsertError) {
                                     throw new Error(`Upsert error: ${upsertError.message}`);
@@ -427,6 +475,20 @@ export async function GET(request: Request) {
                             }
                         }
                     }
+
+                    // Live Updates feed: diff before/after this account's sync.
+                    if (!connectionHasTokenError) {
+                        const eventsWritten = await recordCampaignEvents(supabase, {
+                            organizationId: conn.organization_id,
+                            adAccountId: adAccount.id,
+                            before: eventsBefore,
+                            currency: adAccount.currency ?? null,
+                            timezone: adAccount.timezone_name ?? null,
+                        });
+                        if (eventsWritten > 0) {
+                            syncResults.push({ account: adAccount.meta_ad_account_id, type: 'campaign_events', events: eventsWritten });
+                        }
+                    }
                 }
 
                 if (connectionHasTokenError) {
@@ -435,6 +497,7 @@ export async function GET(request: Request) {
                         .update({ status: 'disconnected' })
                         .eq('id', conn.id);
                     console.log(`[Sync] Disconnected meta_connection ${conn.id} due to OAuth token error (Code 190).`);
+                    syncResults.push({ org: conn.organization_id, status: 'failed', error: 'Meta token expired or revoked (code 190); connection marked disconnected.' });
                 }
 
             } catch (connIterError: any) {
@@ -443,6 +506,20 @@ export async function GET(request: Request) {
             }
         }
 
+        // Non-200 on any failure so the GitHub Actions / cron caller surfaces it instead of silently "succeeding".
+        if (!connections || connections.length === 0) {
+            return NextResponse.json(
+                { success: false, error: 'No connected Meta connection. Reconnect Meta or save a System User token on /admin/meta.', results: syncResults },
+                { status: 503 }
+            );
+        }
+        const failed = syncResults.filter((r: any) => r?.status === 'failed');
+        if (failed.length > 0) {
+            return NextResponse.json(
+                { success: false, failed: failed.length, total: syncResults.length, results: syncResults },
+                { status: 502 }
+            );
+        }
         return NextResponse.json({ success: true, results: syncResults });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaServerClient } from '@/lib/meta/server/client';
+import { resolveResultSpec, computeResult } from '@/lib/meta/results';
 
 export const dynamic = 'force-dynamic';
 
@@ -182,6 +183,14 @@ export default async function DashboardPage(
     }
   }
 
+  // 7. Objective-aware result (follows, ThruPlays, purchases, leads, messaging, ...)
+  const resultSpec =
+    resolveResultSpec(selectedCampaign?.objective, selectedCampaign?.optimization_goal) ??
+    resolveResultSpec(totalMessagingConversations > 0 ? 'MESSAGES' : 'OUTCOME_TRAFFIC');
+  const result = resultSpec
+    ? computeResult(resultSpec, insightsData || [], { totalSpend, periodReach, totalImpressions })
+    : null;
+
   const aggregates = {
     spend: totalSpend,
     impressions: totalImpressions,
@@ -191,7 +200,8 @@ export default async function DashboardPage(
     cpm: totalImpressions > 0 ? ((totalSpend / totalImpressions) * 1000) : 0,
     ctr: totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100) : 0,
     messaging_conversations: totalMessagingConversations,
-    cost_per_messaging_conversation: totalMessagingConversations > 0 ? (totalMessagingCostWeighted / totalMessagingConversations) : null
+    cost_per_messaging_conversation: totalMessagingConversations > 0 ? (totalMessagingCostWeighted / totalMessagingConversations) : null,
+    result,
   };
 
   // 6. Fetch Last Synced Timestamp

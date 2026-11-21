@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import AdAccountsManager from './AdAccountsManager';
+import SystemUserTokenForm from './SystemUserTokenForm';
 import './meta-tailwind.css';
 
 export default async function MetaAdminPage() {
@@ -16,6 +17,9 @@ export default async function MetaAdminPage() {
         .select('*')
         .eq('organization_id', profile.organization_id)
         .single();
+
+    const tokenExpired = !!connection?.token_expires_at && new Date(connection.token_expires_at) <= new Date();
+    const isHealthy = !!connection && connection.status === 'connected' && !tokenExpired;
 
     // Fetch already registered Ad Accounts for this organization
     const { data: registeredAccounts } = await supabase
@@ -48,26 +52,20 @@ export default async function MetaAdminPage() {
             <div className="max-w-5xl mx-auto space-y-8">
                 
                 {/* Header Section */}
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#4b2c82] via-[#6F42C1] to-[#9a67ea] shadow-xl p-8 sm:p-10 text-white">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                        <div className="max-w-2xl">
-                            <h2 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-                                Meta Marketing API Integration
-                            </h2>
-                            <p className="text-purple-100 text-lg leading-relaxed">
-                                Connect your Meta Business Manager to synchronize Ad Accounts, Campaigns, and Insights into the Marketivity Client Portal.
-                            </p>
-                        </div>
-                        <div className="flex-shrink-0">
-                            <div className="p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-inner flex items-center justify-center">
-                                <svg className="h-12 w-12 text-white opacity-90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                                </svg>
-                            </div>
-                        </div>
+                <header className="gx-page-header" data-reveal="">
+                    <div className="gx-page-header__text">
+                        <span className="gx-eyebrow">Integrations</span>
+                        <h1 className="gx-h1">Meta Marketing API</h1>
+                        <p className="gx-lead">
+                            Connect your Meta Business Manager to synchronize Ad Accounts, Campaigns, and Insights into the Marketivity Client Portal.
+                        </p>
                     </div>
-                </div>
+                    <span className="gx-kpi__icon" style={{ width: 56, height: 56, borderRadius: 18, color: '#1877F2' }} aria-hidden>
+                        <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                        </svg>
+                    </span>
+                </header>
 
                 {/* Connection Status Card */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300">
@@ -89,15 +87,22 @@ export default async function MetaAdminPage() {
                                     <h3 className="text-lg font-bold text-gray-900">System Connection</h3>
                                     {connection ? (
                                         <div className="mt-1 flex flex-col sm:flex-row sm:items-center sm:gap-4 gap-1">
-                                            <span className="inline-flex items-center text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
-                                                <span className="h-1.5 w-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
-                                                Active Session
-                                            </span>
+                                            {isHealthy ? (
+                                                <span className="inline-flex items-center text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
+                                                    <span className="h-1.5 w-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
+                                                    Active Session
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center text-sm font-semibold text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200">
+                                                    Token expired. Click Reconnect
+                                                </span>
+                                            )}
                                             <span className="text-sm font-medium text-gray-500 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                                 ID: {connection.meta_user_id}
                                             </span>
                                             <span className="text-xs text-gray-400">
                                                 Verified: {new Date(connection.last_validated_at).toLocaleDateString()}
+                                                {connection.token_expires_at && ` · Expires: ${new Date(connection.token_expires_at).toLocaleDateString()}`}
                                             </span>
                                         </div>
                                     ) : (
@@ -128,6 +133,9 @@ export default async function MetaAdminPage() {
                                 )}
                             </div>
                         </div>
+                    </div>
+                    <div className="border-t border-gray-100">
+                        <SystemUserTokenForm />
                     </div>
                 </div>
 

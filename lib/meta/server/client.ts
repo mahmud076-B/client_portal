@@ -98,7 +98,7 @@ export class MetaServerClient {
         const response = await fetch(url);
 
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             const errorObj = new Error(`Meta API Error: ${error.error?.message || 'Unknown error'}`);
             (errorObj as any).metaError = error.error;
             throw errorObj;
@@ -130,7 +130,9 @@ export class MetaServerClient {
                 timezone_name: account.timezone_name
             }));
         } catch (error: any) {
-            throw new Error(`Failed to retrieve Ad Accounts: ${error.message}`);
+            const wrapped = new Error(`Failed to retrieve Ad Accounts: ${error.message}`);
+            (wrapped as any).metaError = error.metaError; // keep Meta code/subcode for callers
+            throw wrapped;
         }
     }
 
@@ -146,7 +148,7 @@ export class MetaServerClient {
      * NOTE: Only campaigns visible under the authenticated token are returned.
      * The caller is responsible for cross-checking against the authorized ad account.
      */
-    async getCampaigns(metaAdAccountId: string): Promise<NormalizedCampaignMeta[]> {
+    async getCampaigns(metaAdAccountId: string, opts: { includeArchived?: boolean } = {}): Promise<NormalizedCampaignMeta[]> {
         try {
             const accountIdStr = metaAdAccountId.startsWith('act_')
                 ? metaAdAccountId
@@ -155,7 +157,12 @@ export class MetaServerClient {
             let campaigns: NormalizedCampaignMeta[] = [];
             let nextEndpoint: string | null = `/${accountIdStr}/campaigns`;
             let currentParams: Record<string, string> | undefined = {
-                fields: 'id,name,status,effective_status,objective,buying_type,account_id,daily_budget,lifetime_budget,start_time,stop_time'
+                fields: 'id,name,status,effective_status,objective,buying_type,account_id,daily_budget,lifetime_budget,start_time,stop_time',
+                limit: '200',
+                // The edge hides ARCHIVED/DELETED by default; the status refresh must see them so they stop showing "Active".
+                ...(opts.includeArchived
+                    ? { effective_status: JSON.stringify(['ACTIVE', 'PAUSED', 'ARCHIVED', 'DELETED', 'IN_PROCESS', 'WITH_ISSUES']) }
+                    : {})
             };
 
             let pageCount = 0;
@@ -211,7 +218,7 @@ export class MetaServerClient {
      * to make the intent clear at the call site.
      */
     async getCampaignMetadata(metaAdAccountId: string): Promise<NormalizedCampaignMeta[]> {
-        return this.getCampaigns(metaAdAccountId);
+        return this.getCampaigns(metaAdAccountId, { includeArchived: true });
     }
 
     /**

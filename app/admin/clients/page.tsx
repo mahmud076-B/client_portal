@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import ClientManager from './ClientManager';
 import ClientActions from './ClientActions';
+import { Badge, DataTable, EmptyState, GlassCard, KpiCard, PageHeader } from '@/components/ui';
 
 export const metadata = {
   title: 'Client Management — Marketivity',
@@ -57,7 +58,7 @@ export default async function ClientsPage() {
   // 4. Fetch all available campaigns and detailed assignments for Management
   const { data: allCampaigns } = await supabase
     .from('campaigns')
-    .select('id, name, status, ad_accounts!inner(organization_id)')
+    .select('id, name, status, effective_status, start_time, end_time, ad_accounts!inner(organization_id)')
     .eq('ad_accounts.organization_id', profile.organization_id)
     .order('name');
 
@@ -72,42 +73,43 @@ export default async function ClientsPage() {
     `)
     .eq('clients.organization_id', profile.organization_id);
 
+  const totalSpend = Object.values(clientSpendMap).reduce((a, b) => a + b, 0);
+  const activeCount = (clients || []).filter((c) => c.status === 'active').length;
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
   return (
-    <div style={{ padding: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontFamily: 'var(--fh)', fontSize: '1.75rem', fontWeight: 800, color: 'var(--c900)', margin: '0 0 0.5rem 0' }}>
-            Client Management
-          </h1>
-          <p style={{ color: 'var(--c500)', fontSize: '0.9375rem', margin: 0 }}>
-            Invite and manage client access to their campaign reporting.
-          </p>
-        </div>
+    <div className="gx-stack">
+      <PageHeader
+        eyebrow="Clients"
+        title="Client management"
+        description="Invite and manage client access to their campaign reporting."
+        actions={<ClientManager />}
+      />
+
+      <div className="gx-grid">
+        <KpiCard label="Total clients" value={(clients || []).length} />
+        <KpiCard label="Active" value={activeCount} foot="With portal access enabled" />
+        <KpiCard label="Lifetime spend" value={money.format(totalSpend)} foot="Across assigned campaigns" />
       </div>
 
-      <ClientManager />
-
-      <div style={{ background: 'var(--white)', borderRadius: 'var(--r-xl)', boxShadow: 'var(--sh-sm)', overflow: 'hidden', border: '1px solid var(--c200)' }}>
+      <GlassCard flush>
         {(!clients || clients.length === 0) ? (
-          <div style={{ padding: '4rem 2rem', textAlign: 'center' }}>
-            <div style={{ width: '64px', height: '64px', background: 'var(--c100)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', color: 'var(--c400)' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <h3 style={{ fontFamily: 'var(--fh)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--c900)', margin: '0 0 0.5rem 0' }}>No clients yet</h3>
-            <p style={{ color: 'var(--c500)', fontSize: '0.9375rem', margin: 0, maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
-              Add your first client to send them an invitation and start sharing campaign performance data.
-            </p>
-          </div>
+          <EmptyState
+            title="No clients yet"
+            icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}
+          >
+            Add your first client to send them an invitation and start sharing campaign performance data.
+          </EmptyState>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <DataTable>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--c200)', background: 'var(--c50)' }}>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client / Business</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Email</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Campaigns</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Spend</th>
-                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--c500)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
+              <tr>
+                <th>Client / Business</th>
+                <th>Contact email</th>
+                <th>Status</th>
+                <th className="gx-num">Campaigns</th>
+                <th className="gx-num">Total spend</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -116,37 +118,24 @@ export default async function ClientsPage() {
                 const clientAssignments = (assignmentsList || []).filter(a => a.client_id === client.id);
 
                 return (
-                  <tr key={client.id} style={{ borderBottom: '1px solid var(--c100)' }}>
-                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--c900)', fontSize: '0.9375rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <tr key={client.id}>
+                    <td>
+                      <div className="gx-strong" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
                         {client.company_name}
-                        {isOrphan && (
-                          <span style={{ background: '#FEF2F2', color: '#B91C1C', fontSize: '0.625rem', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontWeight: 700 }}>ORPHANED</span>
-                        )}
+                        {isOrphan && <Badge tone="danger">Orphaned</Badge>}
                       </div>
-                      <div style={{ fontSize: '0.8125rem', color: 'var(--c500)' }}>{client.name}</div>
+                      <div className="gx-muted">{client.name}</div>
                     </td>
-                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
-                      {client.email}
-                    </td>
-                    <td style={{ padding: '1.25rem 1.5rem' }}>
-                      <span style={{ 
-                        display: 'inline-flex', alignItems: 'center', 
-                        background: client.status === 'active' ? '#ECFDF5' : '#F3F4F6', 
-                        color: client.status === 'active' ? '#047857' : '#4B5563', 
-                        padding: '0.25rem 0.625rem', borderRadius: '1rem', fontSize: '0.75rem', fontWeight: 600 
-                      }}>
+                    <td>{client.email}</td>
+                    <td>
+                      <Badge tone={client.status === 'active' ? 'success' : 'neutral'} dot>
                         {client.status === 'active' ? 'Active' : 'Inactive'}
-                      </span>
+                      </Badge>
                     </td>
-                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c600)' }}>
-                      {client.campaign_assignments?.[0]?.count || 0}
-                    </td>
-                    <td style={{ padding: '1.25rem 1.5rem', fontSize: '0.875rem', color: 'var(--c900)', fontWeight: 500 }}>
-                      ${(clientSpendMap[client.id] || 0).toFixed(2)}
-                    </td>
-                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
-                      <ClientActions 
+                    <td className="gx-num">{client.campaign_assignments?.[0]?.count || 0}</td>
+                    <td className="gx-num gx-strong">{money.format(clientSpendMap[client.id] || 0)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <ClientActions
                         clientId={client.id}
                         clientName={client.company_name || client.name}
                         isOrphan={isOrphan}
@@ -158,9 +147,9 @@ export default async function ClientsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
-      </div>
+      </GlassCard>
     </div>
   );
 }

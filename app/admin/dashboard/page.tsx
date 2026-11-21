@@ -1,33 +1,73 @@
-export default function AdminDashboardPage() {
-  return (
-    <div>
-      <div className="dash-header fade-up">
-        <div>
-          <h1 className="dash-greeting">Operations Overview</h1>
-          <p className="dash-sub">Welcome to the Marketivity Admin Portal. Select an option to manage clients or Meta connections.</p>
-        </div>
-      </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem', marginTop: '2rem' }} className="fade-up">
-        <a href="/admin/clients" style={{ padding: '2rem', background: 'white', borderRadius: '12px', border: '1px solid var(--c200)', textDecoration: 'none', color: 'inherit', boxShadow: 'var(--sh-md)', transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--c900)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'var(--orange-100)', color: 'var(--orange-600)', borderRadius: '8px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </span>
-            Manage Clients
-          </h2>
-          <p style={{ color: 'var(--c500)', fontSize: '0.875rem', lineHeight: 1.5 }}>View organizations, client portals, and assign campaigns.</p>
-        </a>
+import { requireAdmin } from '@/lib/supabase/auth';
+import { createClient } from '@/lib/supabase/server';
+import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
+import { GlassLinkCard, KpiCard, PageHeader, ButtonLink } from '@/components/ui';
 
-        <a href="/admin/meta" style={{ padding: '2rem', background: 'white', borderRadius: '12px', border: '1px solid var(--c200)', textDecoration: 'none', color: 'inherit', boxShadow: 'var(--sh-md)', transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--c900)' }}>
-             <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'var(--orange-100)', color: 'var(--orange-600)', borderRadius: '8px' }}>
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-             </span>
-            Meta Integration
-          </h2>
-          <p style={{ color: 'var(--c500)', fontSize: '0.875rem', lineHeight: 1.5 }}>Manage Facebook OAuth connections and sync ad accounts.</p>
-        </a>
+export const dynamic = 'force-dynamic';
+
+const nf = new Intl.NumberFormat('en-US');
+
+function greeting(date = new Date()) {
+  return greetingForHour(dhakaHour(date));
+}
+
+async function loadCounts(organizationId: string | null) {
+  if (!organizationId) return null;
+  try {
+    const supabase = await createClient();
+    const [clients, accounts, campaigns, active] = await Promise.all([
+      supabase.from('clients').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
+      supabase.from('ad_accounts').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
+      supabase.from('campaigns').select('id, ad_accounts!inner(organization_id)', { count: 'exact', head: true }).eq('ad_accounts.organization_id', organizationId),
+      supabase.from('campaigns').select('id, ad_accounts!inner(organization_id)', { count: 'exact', head: true }).eq('ad_accounts.organization_id', organizationId).eq('status', 'ACTIVE').or(`end_time.is.null,end_time.gt.${new Date().toISOString()}`),
+    ]);
+    return { clients: clients.count ?? 0, accounts: accounts.count ?? 0, campaigns: campaigns.count ?? 0, active: active.count ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
+const Icon = {
+  users: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  link: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
+  layers: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+  arrow: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>,
+};
+
+export default async function AdminDashboardPage() {
+  const { profile } = await requireAdmin();
+  const counts = await loadCounts(profile.organization_id);
+  const firstName = profile.full_name?.split(' ')[0] || 'there';
+  const show = (n?: number) => (counts ? nf.format(n ?? 0) : '—');
+
+  return (
+    <div className="gx-stack">
+      <PageHeader
+        eyebrow="Operations"
+        title={<>{greeting()}, <span className="gx-accent">{firstName}</span></>}
+        description="Here's the pulse of the Marketivity client portal: clients, connected ad accounts and live campaigns."
+        actions={<><ButtonLink href="/admin/meta">Meta connections</ButtonLink><ButtonLink href="/admin/clients" variant="primary">Manage clients</ButtonLink></>}
+      />
+
+      <div className="gx-grid">
+        <KpiCard label="Clients" value={show(counts?.clients)} icon={Icon.users} foot="Organizations with portal access" />
+        <KpiCard label="Ad accounts" value={show(counts?.accounts)} icon={Icon.link} foot="Registered from Meta" />
+        <KpiCard label="Campaigns" value={show(counts?.campaigns)} icon={Icon.layers} foot="Synced into the portal" />
+        <KpiCard label="Active now" value={show(counts?.active)} icon={Icon.pulse} foot="Delivering on Meta" />
+      </div>
+
+      <div className="gx-grid gx-grid--wide">
+        <GlassLinkCard href="/admin/clients">
+          <div className="gx-tile__icon">{Icon.users}</div>
+          <div className="gx-tile__title">Manage clients <span className="gx-tile__arrow">{Icon.arrow}</span></div>
+          <p className="gx-tile__desc">Invite organizations, control portal access and assign campaigns to each client.</p>
+        </GlassLinkCard>
+        <GlassLinkCard href="/admin/meta">
+          <div className="gx-tile__icon">{Icon.link}</div>
+          <div className="gx-tile__title">Meta integration <span className="gx-tile__arrow">{Icon.arrow}</span></div>
+          <p className="gx-tile__desc">Keep the Meta Business connection healthy, register ad accounts and sync campaigns.</p>
+        </GlassLinkCard>
       </div>
     </div>
   );

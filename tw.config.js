@@ -1,5 +1,5 @@
 module.exports = {
-  content: ['./app/dashboard/admin/meta/**/*.{js,ts,jsx,tsx}'],
+  content: ['./app/admin/meta/**/*.{js,ts,jsx,tsx}'],
   theme: { extend: {} },
   plugins: []
 }
