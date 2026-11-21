@@ -157,6 +157,30 @@ export function resolveResultSpec(objective?: string | null, optimizationGoal?: 
 
 type ActionStat = { action_type?: string; value?: string | number };
 
+const MESSAGING_FALLBACK_OBJECTIVES = new Set(['', 'OUTCOME_ENGAGEMENT', 'POST_ENGAGEMENT', 'MESSAGES', 'OUTCOME_LEADS', 'OUTCOME_SALES', 'OUTCOME_TRAFFIC']);
+
+/**
+ * Like resolveResultSpec, but when the ad set optimization_goal is unknown (metadata not
+ * synced yet) it looks at the data: a campaign that is producing messaging conversations
+ * is a messages campaign, whose Ads Manager result is "Messaging conversations started".
+ * Without this, OUTCOME_ENGAGEMENT messages campaigns showed "Post engagements".
+ */
+export function resolveResultSpecForData(
+    objective: string | null | undefined,
+    optimizationGoal: string | null | undefined,
+    rows: { actions?: unknown; messaging_conversations_started?: number | string | null }[]
+): ResultSpec | null {
+    const base = resolveResultSpec(objective, optimizationGoal);
+    if (optimizationGoal) return base;
+    const types = (MESSAGING.metric as { kind: 'actions'; types: string[] }).types;
+    const msgs = rows.reduce((sum, r) => {
+        const v = firstOf(r.actions, types) ?? (Number(r.messaging_conversations_started) || 0);
+        return sum + v;
+    }, 0);
+    if (msgs > 0 && MESSAGING_FALLBACK_OBJECTIVES.has((objective || '').toUpperCase())) return MESSAGING;
+    return base;
+}
+
 function actionValue(list: unknown, type: string): number | null {
     if (!Array.isArray(list)) return null;
     const hit = (list as ActionStat[]).find((a) => a?.action_type === type);
@@ -295,6 +319,24 @@ export function deriveDeliveryStatus(
             return { key: 'billing', code: 'OTHER', label: 'Billing needed', tone: 'red', description: 'Delivery is waiting on billing.', isLive: false };
     }
     return { key: 'unknown', code: 'OTHER', label: eff ? eff.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (s) => s.toUpperCase()) : 'Unknown', tone: 'gray', description: 'Status synced from Meta.', isLive: false };
+}
+
+/**
+ * One status for a group of campaigns (e.g. a client's campaigns), built on deriveDeliveryStatus:
+ * Active if any campaign is delivering; otherwise the most relevant state (issues > review >
+ * scheduled > paused > completed > archived). Empty list => null.
+ */
+export function summarizeDeliveryStatus(
+    campaigns: Parameters<typeof deriveDeliveryStatus>[0][],
+    now: Date = new Date()
+): (DeliveryStatus & { liveCount: number; total: number }) | null {
+    if (!campaigns.length) return null;
+    const all = campaigns.map((c) => deriveDeliveryStatus(c, now));
+    const liveCount = all.filter((s) => s.isLive).length;
+    const order: DerivedStatus[] = ['ACTIVE', 'REJECTED', 'IN_REVIEW', 'SCHEDULED', 'PAUSED', 'OTHER', 'COMPLETED', 'ARCHIVED', 'DELETED'];
+    const top = [...all].sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code))[0];
+    const label = liveCount > 1 ? `${liveCount} active` : top.label;
+    return { ...top, label, liveCount, total: all.length };
 }
 
 /** Friendly objective name for display. */

@@ -1,4 +1,4 @@
-import { computeResult, deriveDeliveryStatus, resolveResultSpec, type InsightRow } from '@/lib/meta/results';
+import { computeResult, deriveDeliveryStatus, resolveResultSpecForData, type InsightRow } from '@/lib/meta/results';
 
 /**
  * Performance commentary for the Live Updates feed ("Running well now",
@@ -99,7 +99,7 @@ function prepareDays(params: {
   const rows = [...params.rows].sort((a, b) => (a.date < b.date ? -1 : 1));
   if (rows.length < 2) return null;
 
-  const spec = resolveResultSpec(campaign.objective, campaign.optimization_goal);
+  const spec = resolveResultSpecForData(campaign.objective, campaign.optimization_goal, rows);
   const resultByDate = new Map<string, number>();
   let resultLabel = 'results';
   let costLabel = 'Cost per result';

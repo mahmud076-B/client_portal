@@ -457,3 +457,17 @@ html.gx-motion body.gx :is([data-reveal], .gx-card, .fade-up):not([data-rv]) { o
 .gx .sidebar-brand > a:has(> img) { width: 42px; height: 42px; border-radius: 13px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--mk-line), 0 6px 14px -8px rgba(36, 32, 44, .35); }
 .gx .sidebar-brand > a > img { width: 100%; height: 100%; border-radius: 0; box-shadow: none; object-fit: cover; transform: translateY(31%) scale(2.3); }
 .gx .sidebar-brand > a:has(> img)::after { content: 'Marketivity'; position: absolute; left: calc(1.25rem + 54px); font-weight: 700; font-size: 1.0625rem; letter-spacing: -.02em; color: var(--mk-ink); }
+
+/* ── Loading skeletons (route-level loading.tsx) ─────────────────── */
+.gx-skel-page { padding: clamp(1rem, 3vw, 2rem); display: grid; gap: 1rem; max-width: 1200px; margin: 0 auto; }
+.gx-skel-row { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.gx-skel {
+  border-radius: 18px;
+  background: linear-gradient(90deg, rgba(255,255,255,.55) 0%, rgba(247,147,30,.10) 50%, rgba(255,255,255,.55) 100%);
+  background-size: 200% 100%;
+  border: 1px solid rgba(36,32,44,.06);
+  animation: gx-skel-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes gx-skel-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .gx-skel { animation: none; } }
+.is-navigating { opacity: .6; transition: opacity .15s ease; pointer-events: none; }

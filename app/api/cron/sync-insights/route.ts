@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
-import { recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
+import { rebaseSnapshotTotals, recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
+import { findInsightGap, isIsoDay } from '@/lib/meta/server/backfill';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for syncing
@@ -26,6 +27,10 @@ export async function GET(request: Request) {
 
         const url = new URL(request.url);
         const specificDate = url.searchParams.get('date');
+        // Optional manual backfill: ?since=YYYY-MM-DD&until=YYYY-MM-DD (one ranged Meta call per account).
+        const rangeSince = url.searchParams.get('since');
+        const rangeUntil = url.searchParams.get('until');
+        const manualRange = isIsoDay(rangeSince) && isIsoDay(rangeUntil) && rangeSince <= rangeUntil ? `${rangeSince}..${rangeUntil}` : null;
 
         const supabase = createAdminClient();
 
@@ -71,13 +76,16 @@ export async function GET(request: Request) {
 
                 let connectionHasTokenError = false;
 
-                for (const adAccount of adAccounts || []) {
-                    if (adAccount.status !== 'active') continue;
+                // Ad accounts are synced in parallel so a slow/broken account cannot push the whole run
+                // past the scheduler's HTTP timeout (which then retries and runs the sync twice).
+                await Promise.all((adAccounts || []).map(async (adAccount: any) => {
+                  try {
+                    if (adAccount.status !== 'active') return;
 
-                    if (connectionHasTokenError) break;
+                    if (connectionHasTokenError) return;
 
                     // Snapshot for the Live Updates feed (never throws).
-                    const eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
+                    let eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
 
                     // ============================================================
                     // STEP A: CAMPAIGN METADATA REFRESH (isolated — never skips insights)
@@ -276,7 +284,7 @@ export async function GET(request: Request) {
                         };
                         console.error(`[MetadataRefresh] Failed for ad_account=${adAccount.meta_ad_account_id}: ${metaRefreshError.message}`);
 
-                        if (connectionHasTokenError) break;
+                        if (connectionHasTokenError) return;
                     }
 
                     syncResults.push({
@@ -286,15 +294,18 @@ export async function GET(request: Request) {
                     });
 
                     // If token error was confirmed in metadata refresh, stop now
-                    if (connectionHasTokenError) break;
+                    if (connectionHasTokenError) return;
 
                     // ============================================================
                     // STEP B: INSIGHTS SYNC (D-1 and D-2) — unchanged behavior
                     // ============================================================
                     const tz = adAccount.timezone_name || 'UTC';
 
+                    // Entries are a single day "YYYY-MM-DD" or a range "YYYY-MM-DD..YYYY-MM-DD".
                     let targetDates: string[] = [];
-                    if (specificDate) {
+                    if (manualRange) {
+                        targetDates.push(manualRange);
+                    } else if (specificDate) {
                         targetDates.push(specificDate);
                     } else {
                         // Calculate D-0, D-1 and D-2 in the ad account's timezone
@@ -334,7 +345,20 @@ export async function GET(request: Request) {
                         targetDates.push(formatCanonical(d2Date)); // D2
                     }
 
+                    // Auto-backfill days missing for live campaigns (e.g. while the token was expired),
+                    // otherwise lifetime spend/results stay below Ads Manager forever.
+                    if (!manualRange && !specificDate) {
+                        try {
+                            const gap = await findInsightGap(supabase, { adAccountId: adAccount.id, timeZone: tz });
+                            // First, so the Live Updates baseline can be rebased right after it (see below).
+                            if (gap) targetDates.unshift(`${gap.since}..${gap.until}`);
+                        } catch (gapErr: any) {
+                            console.warn(`[Sync] gap check failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
+                        }
+                    }
+
                     for (const targetDate of targetDates) {
+                        const [rangeStart, rangeEnd] = targetDate.includes('..') ? targetDate.split('..') : [targetDate, targetDate];
                         const syncStartedAt = new Date().toISOString();
 
                         try {
@@ -347,8 +371,8 @@ export async function GET(request: Request) {
                             while (retryCount <= maxRetries) {
                                 try {
                                     insights = await insightsClient.getDailyCampaignInsights(adAccount.meta_ad_account_id, {
-                                        since: targetDate,
-                                        until: targetDate
+                                        since: rangeStart,
+                                        until: rangeEnd
                                     });
                                     lastError = null;
                                     break;
@@ -368,7 +392,7 @@ export async function GET(request: Request) {
 
                                     retryCount++;
                                     if (retryCount <= maxRetries) {
-                                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retryCount))); // Exponential backoff
+                                        await new Promise(r => setTimeout(r, 500 * Math.pow(2, retryCount))); // Exponential backoff: 1s, 2s, 4s
                                     }
                                 }
                             }
@@ -454,6 +478,11 @@ export async function GET(request: Request) {
 
                             syncResults.push({ account: adAccount.meta_ad_account_id, date: targetDate, status: 'success', records: insightsPayload.length });
 
+                            // Historical backfill: recovered past days are not "new results" for the feed.
+                            if (targetDate.includes('..') && eventsBefore) {
+                                eventsBefore = rebaseSnapshotTotals(eventsBefore, await snapshotAccountCampaigns(supabase, adAccount.id));
+                            }
+
                         } catch (dateError: any) {
                             const metaError = dateError.metaError;
                             if (metaError && metaError.code === 190) {
@@ -489,7 +518,11 @@ export async function GET(request: Request) {
                             syncResults.push({ account: adAccount.meta_ad_account_id, type: 'campaign_events', events: eventsWritten });
                         }
                     }
-                }
+                  } catch (accountErr: any) {
+                    console.error(`[Sync] account ${adAccount.meta_ad_account_id} failed:`, accountErr);
+                    syncResults.push({ account: adAccount.meta_ad_account_id, status: 'failed', error: accountErr?.message || String(accountErr) });
+                  }
+                }));
 
                 if (connectionHasTokenError) {
                     await supabase
@@ -514,10 +547,14 @@ export async function GET(request: Request) {
             );
         }
         const failed = syncResults.filter((r: any) => r?.status === 'failed');
+        const succeeded = syncResults.filter((r: any) => r?.status === 'success');
         if (failed.length > 0) {
+            // Partial failure (e.g. one broken ad account) -> 207: still 2xx, so the Azure Logic App's
+            // retry policy does not re-run the WHOLE sync a minute later (it did after every 502).
+            // Total failure stays 502 so the scheduler surfaces it.
             return NextResponse.json(
-                { success: false, failed: failed.length, total: syncResults.length, results: syncResults },
-                { status: 502 }
+                { success: false, partial: succeeded.length > 0, failed: failed.length, total: syncResults.length, results: syncResults },
+                { status: succeeded.length > 0 ? 207 : 502 }
             );
         }
         return NextResponse.json({ success: true, results: syncResults });

@@ -3,12 +3,14 @@ import DashboardClient from './DashboardClient';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { MetaServerClient } from '@/lib/meta/server/client';
-import { resolveResultSpec, computeResult } from '@/lib/meta/results';
+import { dayIn } from '@/lib/dates';
+import { getCampaignPeriodTotalsCached } from '@/lib/meta/server/period-totals';
+import { buildDashboardTotals, rangeWindow } from '@/lib/campaigns/dashboard-totals';
 
 export const dynamic = 'force-dynamic';
 
-export type DashboardRange = 'today' | '7' | '14' | '30' | 'maximum';
+export type { DashboardRange } from '@/lib/campaigns/dashboard-totals';
+import type { DashboardRange } from '@/lib/campaigns/dashboard-totals';
 
 export default async function DashboardPage(
   props: { searchParams: Promise<{ campaignId?: string, days?: string, range?: string }> }
@@ -62,166 +64,76 @@ export default async function DashboardPage(
   }
   const range = rawRange as DashboardRange;
 
-  // Calculate dates in ad account timezone
-  // Use en-CA for YYYY-MM-DD formatting
+  // 4. Ad account (timezone/currency/org) + last sync in parallel.
   const adminClient = createAdminClient();
-  let timezoneName = 'UTC';
-  let organizationId: string | null = null;
-  
-  if (selectedCampaign?.ad_account_id) {
-    const { data: adAccount } = await adminClient
-      .from('ad_accounts')
-      .select('organization_id, timezone_name')
-      .eq('id', selectedCampaign.ad_account_id)
-      .single();
-      
-    if (adAccount?.timezone_name) {
-      timezoneName = adAccount.timezone_name;
-    }
-    if (adAccount?.organization_id) {
-      organizationId = adAccount.organization_id;
-    }
-  }
-  
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezoneName,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
+  const [{ data: adAccount }, { data: syncLog }] = await Promise.all([
+    selectedCampaign?.ad_account_id
+      ? adminClient.from('ad_accounts').select('organization_id, timezone_name, currency').eq('id', selectedCampaign.ad_account_id).single()
+      : Promise.resolve({ data: null }),
+    selectedCampaign?.ad_account_id
+      ? adminClient
+          .from('sync_logs')
+          .select('completed_at')
+          .eq('ad_account_id', selectedCampaign.ad_account_id)
+          .eq('status', 'success')
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const timezoneName: string = adAccount?.timezone_name || 'UTC';
+  const organizationId: string | null = adAccount?.organization_id ?? null;
+  const currency: string | null = adAccount?.currency ?? null;
+  const lastSyncedAt: string | null = syncLog?.completed_at ?? null;
 
-  const now = new Date();
-  const endDate = formatter.format(now); // today in the ad account's timezone
+  // Ads Manager reports in the ad account timezone.
+  const { since: startDate, until: endDate } = rangeWindow(range, dayIn(timezoneName));
 
-  let startDate = endDate;
-  if (range === '7' || range === '14' || range === '30') {
-    const days = parseInt(range, 10);
-    const dN = new Date(now);
-    dN.setDate(dN.getDate() - days);
-    startDate = formatter.format(dN);
-  }
-
-  // 4. Fetch Insights
+  // 5. Daily rows from our DB (charts + fallback) and the Meta period totals, in parallel.
   let insightsQuery = supabase
     .from('campaign_insights')
     .select('*')
     .eq('campaign_id', selectedCampaign.id)
     .order('date', { ascending: true });
-    
   if (range !== 'maximum') {
     insightsQuery = insightsQuery.gte('date', startDate).lte('date', endDate);
   }
 
-  const { data: insightsData } = await insightsQuery;
+  const [{ data: insightsData }, metaTotals] = await Promise.all([
+    insightsQuery,
+    // ONE aggregated Meta query: spend, impressions, de-duplicated reach and results all
+    // describe the same period and match Ads Manager. Cached 5 min.
+    selectedCampaign?.meta_campaign_id && organizationId
+      ? getCampaignPeriodTotalsCached(
+          organizationId,
+          selectedCampaign.meta_campaign_id,
+          range === 'maximum' ? { preset: 'maximum' } : { since: startDate, until: endDate }
+        )
+      : Promise.resolve(null),
+  ]);
 
-  // 5. Aggregations
-  let totalSpend = 0;
-  let totalImpressions = 0;
-  let totalClicks = 0;
-  let totalMessagingConversations = 0;
-  let totalMessagingCostWeighted = 0;
+  // 6. Totals + objective-aware result (shared, unit-tested logic)
+  const { totals, resultSpec, result } = buildDashboardTotals({
+    campaign: selectedCampaign,
+    rows: insightsData || [],
+    meta: metaTotals,
+    endDate,
+  });
 
-  if (insightsData && insightsData.length > 0) {
-    insightsData.forEach(insight => {
-      totalSpend += Number(insight.spend || 0);
-      totalImpressions += Number(insight.impressions || 0);
-      totalClicks += Number(insight.clicks || 0);
-      
-      const msgs = Number(insight.messaging_conversations_started || 0);
-      const cost = Number(insight.cost_per_messaging_conversation || 0);
-      if (msgs > 0) {
-        totalMessagingConversations += msgs;
-        totalMessagingCostWeighted += (cost * msgs);
-      }
-    });
+  // Goal not synced yet but the data says "messages": label the objective accordingly.
+  if (resultSpec?.key === 'messaging' && !selectedCampaign.optimization_goal) {
+    selectedCampaign = { ...selectedCampaign, optimization_goal: 'CONVERSATIONS' };
   }
-
-  // 6. Fetch Period-Level Deduplicated Reach from Meta
-  let periodReach: number | null = null;
-
-  if (selectedCampaign?.meta_campaign_id && organizationId) {
-    try {
-      const { data: conn } = await adminClient
-        .from('meta_connections')
-        .select('encrypted_token, iv, auth_tag')
-        .eq('organization_id', organizationId)
-        .eq('status', 'connected')
-        .single();
-
-      if (conn?.encrypted_token && conn?.iv && conn?.auth_tag) {
-        const metaClient = new MetaServerClient({
-          encryptedToken: conn.encrypted_token,
-          iv: conn.iv,
-          authTag: conn.auth_tag
-        });
-
-        let reachSince = startDate;
-        let reachUntil = endDate;
-
-        if (range === 'maximum') {
-          if (insightsData && insightsData.length > 0) {
-            reachSince = insightsData[0].date;
-            reachUntil = insightsData[insightsData.length - 1].date;
-          } else {
-            reachSince = '';
-            reachUntil = '';
-          }
-        }
-
-        if (reachSince && reachUntil) {
-          periodReach = await metaClient.getCampaignPeriodReach(
-            selectedCampaign.meta_campaign_id,
-            { since: reachSince, until: reachUntil }
-          );
-        } else {
-          periodReach = 0;
-        }
-      }
-    } catch (reachErr: any) {
-      console.error('[Dashboard] Error fetching period reach from Meta:', reachErr.message || reachErr);
-      periodReach = null;
-    }
-  }
-
-  // 7. Objective-aware result (follows, ThruPlays, purchases, leads, messaging, ...)
-  const resultSpec =
-    resolveResultSpec(selectedCampaign?.objective, selectedCampaign?.optimization_goal) ??
-    resolveResultSpec(totalMessagingConversations > 0 ? 'MESSAGES' : 'OUTCOME_TRAFFIC');
-  const result = resultSpec
-    ? computeResult(resultSpec, insightsData || [], { totalSpend, periodReach, totalImpressions })
-    : null;
 
   const aggregates = {
-    spend: totalSpend,
-    impressions: totalImpressions,
-    reach: periodReach,
-    clicks: totalClicks,
-    cpc: totalClicks > 0 ? (totalSpend / totalClicks) : 0, 
-    cpm: totalImpressions > 0 ? ((totalSpend / totalImpressions) * 1000) : 0,
-    ctr: totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100) : 0,
-    messaging_conversations: totalMessagingConversations,
-    cost_per_messaging_conversation: totalMessagingConversations > 0 ? (totalMessagingCostWeighted / totalMessagingConversations) : null,
+    ...totals,
     result,
+    currency,
+    period: range === 'maximum'
+      ? { since: metaTotals?.date_start ?? insightsData?.[0]?.date ?? null, until: metaTotals?.date_stop ?? insightsData?.at(-1)?.date ?? null }
+      : { since: startDate, until: endDate },
   };
-
-  // 6. Fetch Last Synced Timestamp
-  let lastSyncedAt: string | null = null;
-  
-  if (selectedCampaign?.ad_account_id) {
-    const { data: syncLog } = await adminClient
-      .from('sync_logs')
-      .select('completed_at')
-      .eq('ad_account_id', selectedCampaign.ad_account_id)
-      .eq('status', 'success')
-      .not('completed_at', 'is', null)
-      .order('completed_at', { ascending: false })
-      .limit(1)
-      .single();
-      
-    if (syncLog?.completed_at) {
-      lastSyncedAt = syncLog.completed_at;
-    }
-  }
 
   return (
     <DashboardClient 

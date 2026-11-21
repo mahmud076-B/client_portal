@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { removeClient, removeAssignment, assignCampaign } from './actions';
-import { Alert, Badge, Button } from '@/components/ui';
+import { Alert, Badge, Button, statusTone } from '@/components/ui';
 import { deriveDeliveryStatus } from '@/lib/meta/results';
 import Modal from '@/components/ui/Modal';
 
@@ -111,7 +111,15 @@ export default function ClientActions({
                   <div key={a.campaign_id} className="gx-glass" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '.875rem 1rem', borderRadius: 14 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, color: 'var(--mk-ink)', fontSize: '.9375rem' }}>{a.campaigns.name}</div>
-                      <div className="gx-hint">Assigned {new Date(a.created_at).toLocaleDateString()}</div>
+                      <div className="gx-hint" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+                        {(() => {
+                          const c = allCampaigns.find((x) => x.id === a.campaign_id);
+                          if (!c) return null;
+                          const ds = deriveDeliveryStatus(c);
+                          return <Badge tone={statusTone(ds.code)} dot live={ds.isLive} title={ds.description}>{ds.label}</Badge>;
+                        })()}
+                        <span>Assigned {new Date(a.created_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
                     <Button size="sm" variant="danger" onClick={() => handleRemoveAssignment(a.campaign_id)} disabled={loadingId === `remove-${a.campaign_id}`}>
                       {loadingId === `remove-${a.campaign_id}` ? 'Removing…' : 'Remove'}

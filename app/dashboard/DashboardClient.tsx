@@ -1,6 +1,6 @@
 'use client';
 import './dashboard.css';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useTransition } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
@@ -37,7 +37,25 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
   );
 }
 
-const fmtMoney = (n: number | null | undefined) => (n == null ? 'N/A' : `$${n.toFixed(2)}`);
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', BDT: '৳', EUR: '€', GBP: '£', INR: '₹' };
+/** Money in the ad account currency, 2 decimals like Ads Manager; sub-cent unit costs keep extra decimals instead of $0.00. */
+function makeMoney(currency: string | null | undefined) {
+  const code = (currency || 'USD').toUpperCase();
+  const sym = CURRENCY_SYMBOL[code] ?? `${code} `;
+  return (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(n)) return 'N/A';
+    const abs = Math.abs(n);
+    // 2 decimals like Ads Manager; only sub-cent amounts get more (never a misleading 0.00).
+    const digits = abs === 0 || abs >= 0.01 ? 2 : abs >= 0.001 ? 3 : 4;
+    return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
+  };
+}
+
+function fmtDay(d: string | null | undefined) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
 
 export default function DashboardClient({
   profile,
@@ -65,10 +83,18 @@ export default function DashboardClient({
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Range/campaign switches re-render on the server; dim the content instantly instead of looking frozen.
+  const [navigating, startNavigation] = useTransition();
   const greeting = useGreeting();
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   const delivery = deriveDeliveryStatus(selectedCampaign || {});
   const result = aggregates?.result ?? null;
+  const fmtMoney = makeMoney(aggregates?.currency);
+  const periodText = aggregates?.period?.since && aggregates?.period?.until
+    ? (aggregates.period.since === aggregates.period.until
+        ? fmtDay(aggregates.period.since)
+        : `${fmtDay(aggregates.period.since)} – ${fmtDay(aggregates.period.until)}`)
+    : '';
   const resultLabel: string = result?.spec?.label ?? 'Results';
 
   // Close sidebar on Escape key
@@ -85,14 +111,14 @@ export default function DashboardClient({
   const handleCampaignChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('campaignId', e.target.value);
-    router.push(`${pathname}?${newParams.toString()}`);
+    startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
   const handleRangeChange = (newRange: string) => {
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('range', newRange);
     newParams.delete('days'); // clear legacy param
-    router.push(`${pathname}?${newParams.toString()}`);
+    startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
   const handleSignOut = async (e: React.MouseEvent) => {
@@ -294,7 +320,7 @@ export default function DashboardClient({
     </header>
 
     
-        <main className="content">
+        <main className={`content${navigating ? ' is-navigating' : ''}`} aria-busy={navigating}>
       {(!campaigns || campaigns.length === 0) ? (
         <div className="demo-notice fade-up" style={{ textAlign: 'center', padding: '40px' }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ margin: '0 auto 10px', display: 'block' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -368,8 +394,8 @@ export default function DashboardClient({
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F7931E" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               Total Spend
             </div>
-            <div className="kpi-value">${aggregates?.spend?.toFixed(2) || '0.00'}</div>
-            <div className="kpi-subtext">Lifetime tracked spend</div>
+            <div className="kpi-value">{fmtMoney(aggregates?.spend ?? 0)}</div>
+            <div className="kpi-subtext">{range === 'maximum' ? 'Lifetime spend' : 'Spend'}{periodText ? ` · ${periodText}` : ''}</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
@@ -385,7 +411,7 @@ export default function DashboardClient({
                 ? Math.round(aggregates.reach).toLocaleString()
                 : 'N/A'}
             </div>
-            <div className="kpi-subtext">Unique accounts (Fetched live from Meta)</div>
+            <div className="kpi-subtext">Unique accounts · same period{aggregates?.source === 'meta' ? ' (live from Meta)' : ''}</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-card-accent"></div>
@@ -422,16 +448,16 @@ export default function DashboardClient({
 
         <div className="kpi-grid-sec">
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CTR</div>
+            <div className="kpi-sm-label">CTR (link)</div>
             <div className="kpi-sm-value">{aggregates?.ctr?.toFixed(2) || '0.00'}%</div>
           </div>
           <div className="kpi-card-sm">
-            <div className="kpi-sm-label">CPC</div>
+            <div className="kpi-sm-label">CPC (link)</div>
             <div className="kpi-sm-value">{fmtMoney(aggregates?.cpc)}</div>
           </div>
           <div className="kpi-card-sm">
             <div className="kpi-sm-label">CPM</div>
-            <div className="kpi-sm-value">${aggregates?.cpm?.toFixed(2) || '0.00'}</div>
+            <div className="kpi-sm-value">{fmtMoney(aggregates?.cpm)}</div>
           </div>
           {result?.spec?.valueTypes ? (
             <div className="kpi-card-sm">
@@ -445,7 +471,7 @@ export default function DashboardClient({
             <div className="kpi-card-sm">
               <div className="kpi-sm-label">Frequency</div>
               <div className="kpi-sm-value">
-                {aggregates?.reach && aggregates?.impressions ? (aggregates.impressions / aggregates.reach).toFixed(2) : 'N/A'}
+                {aggregates?.frequency != null ? Number(aggregates.frequency).toFixed(2) : 'N/A'}
               </div>
             </div>
           )}
@@ -457,7 +483,7 @@ export default function DashboardClient({
           <div>
             <div className="chart-title">Performance Overview</div>
             <div className="chart-sub">
-              {range === 'maximum' ? 'All available data' : range === 'today' ? 'Today' : `Last ${range} days`}
+              {range === 'maximum' ? 'All available data' : range === 'today' ? 'Today' : `Last ${range} days`}{periodText ? ` · ${periodText}` : ''}
             </div>
           </div>
           <div className="chart-tabs">
@@ -504,7 +530,7 @@ export default function DashboardClient({
                     {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget' : 'Daily Budget'}
                   </span>
                   <span className="detail-val detail-val-orange">
-                    ${Number(selectedCampaign.daily_budget).toFixed(2)} / day
+                    {fmtMoney(Number(selectedCampaign.daily_budget))} / day
                   </span>
                 </div>
               )}
@@ -514,7 +540,7 @@ export default function DashboardClient({
                     {selectedCampaign.budget_source === 'adset_aggregated' ? 'Ad Set Budget (Lifetime)' : 'Lifetime Budget'}
                   </span>
                   <span className="detail-val detail-val-orange">
-                    ${Number(selectedCampaign.lifetime_budget).toFixed(2)} total
+                    {fmtMoney(Number(selectedCampaign.lifetime_budget))} total
                   </span>
                 </div>
               )}
@@ -530,7 +556,7 @@ export default function DashboardClient({
 
         <div className="col-right">
           
-          <LiveUpdates campaignId={selectedCampaign?.id ?? null} />
+          <LiveUpdates campaignId={selectedCampaign?.id ?? null} campaignIds={campaigns.map((c: any) => c.id)} />
 
           <div className="activity-card fade-up">
             <div className="card-title">

@@ -6,6 +6,7 @@ import { getOpenAIConfig } from '@/lib/ai/config';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
 import { getPerformanceSnapshot, getRecentEvents, listCampaigns, type Scope } from '@/lib/ai/campaign-data';
 import { coachLine } from '@/lib/events/performance-insights';
+import { feedScopeKey, parseFeedScope } from '@/lib/events/feed-scope';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -14,28 +15,30 @@ export const maxDuration = 30;
 const cache = new Map<string, { at: number; summary: string | null }>();
 const TTL_MS = 60 * 60 * 1000;
 
-export async function GET() {
+export async function GET(req: Request) {
   const { user, profile } = await getCurrentProfile();
   if (!user || !profile) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const hit = cache.get(user.id);
+  const feed = parseFeedScope(new URL(req.url).searchParams);
+  const cacheKey = `${user.id}:${feedScopeKey(feed)}`;
+  const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL_MS) return Response.json({ summary: hit.summary, cached: true });
 
   const scope: Scope = { supabase: await createClient(), profile };
   const [{ events = [] }, campaigns, performance] = await Promise.all([
-    getRecentEvents(scope, { sinceHours: 24, limit: 40 }),
-    listCampaigns(scope),
-    getPerformanceSnapshot(scope).catch(() => []),
+    getRecentEvents(scope, { campaignIds: feed.campaignIds, sinceHours: 24, limit: 40 }),
+    listCampaigns(scope, { campaignIds: feed.campaignIds }),
+    getPerformanceSnapshot(scope, { campaignIds: feed.campaignIds }).catch(() => []),
   ]);
 
   // Deterministic coach line: always available, also the fallback if OpenAI is off or fails.
   const fallback = coachLine(performance);
   const config = getOpenAIConfig();
   if (!config || (events.length === 0 && performance.length === 0)) {
-    cache.set(user.id, { at: Date.now(), summary: fallback });
+    cache.set(cacheKey, { at: Date.now(), summary: fallback });
     return Response.json({ summary: fallback, configured: Boolean(config) });
   }
-  if (!checkRateLimit(`summary:${user.id}`, [{ limit: 24, windowMs: 24 * 3600_000 }]).ok) {
+  if (!checkRateLimit(`summary:${user.id}`, [{ limit: 60, windowMs: 24 * 3600_000 }]).ok) {
     return Response.json({ summary: hit?.summary ?? fallback, configured: true });
   }
 
@@ -58,7 +61,7 @@ export async function GET() {
       providerOptions: { openai: { reasoningEffort: 'low', store: false } },
     });
     const summary = text.trim() || fallback;
-    cache.set(user.id, { at: Date.now(), summary });
+    cache.set(cacheKey, { at: Date.now(), summary });
     return Response.json({ summary, configured: true });
   } catch (err) {
     console.error('[AI Summary] failed:', err);

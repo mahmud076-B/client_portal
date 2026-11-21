@@ -35,3 +35,4 @@
 .mk-lu-skel { height: 44px; border-radius: 10px; margin-bottom: 8px; background: linear-gradient(90deg, #F3EEEA 25%, #FAF7F4 50%, #F3EEEA 75%); background-size: 200% 100%; animation: mk-lu-shimmer 1.2s infinite; }
 @keyframes mk-lu-shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .mk-lu-dot.is-live, .mk-lu-skel { animation: none; } }
+.mk-lu-tag { font-size: 10.5px; font-weight: 600; color: #C46A06; letter-spacing: .02em; margin-bottom: 2px; overflow-wrap: anywhere; }

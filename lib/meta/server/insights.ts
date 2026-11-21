@@ -94,7 +94,9 @@ export class MetaInsightsClient {
         const initialParams = {
             level: 'campaign',
             fields: 'campaign_id,impressions,reach,frequency,clicks,spend,cpc,cpm,ctr,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
-            time_range: JSON.stringify(timeRange)
+            time_range: JSON.stringify(timeRange),
+            // One row per campaign per DAY (ranged backfills rely on this; a no-op for single days).
+            time_increment: '1'
         };
 
         try {
