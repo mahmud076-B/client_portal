@@ -1,7 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { addDays, dayIn, isIsoDay } from '@/lib/dates';
-import { computeInsightGap } from '@/lib/meta/insight-gap';
+import { computeInsightGap, planHistoricalRange } from '@/lib/meta/insight-gap';
 
 export { addDays, dayIn, isIsoDay };
 
@@ -60,4 +60,28 @@ export async function markBackfilled(supabase: SupabaseClient, campaignIds: stri
     if (campaignIds.length === 0) return;
     const { error } = await supabase.from('campaigns').update({ insights_backfilled_through: until }).in('id', campaignIds);
     if (error) console.warn(`[Sync] could not record backfill marker: ${error.message}`);
+}
+
+/**
+ * The historical range for this run (see planHistoricalRange) and the live campaigns whose
+ * insights_backfilled_through advances to its end once the range is stored.
+ */
+export async function planHistoricalSync(
+    supabase: SupabaseClient,
+    params: { adAccountId: string; timeZone: string; now?: Date }
+): Promise<{ since: string; until: string; markThrough: string; campaignIds: string[] }> {
+    const today = dayIn(params.timeZone, params.now);
+    const gap = await findInsightGap(supabase, params).catch(() => null);
+    const plan = planHistoricalRange({ today, gap });
+    let campaignIds = gap?.campaignIds;
+    if (!campaignIds) {
+        const { data } = await supabase
+            .from('campaigns')
+            .select('id, status, effective_status')
+            .eq('ad_account_id', params.adAccountId);
+        campaignIds = (data || [])
+            .filter((c) => (c.effective_status || c.status || '').toUpperCase() === 'ACTIVE')
+            .map((c) => c.id);
+    }
+    return { ...plan, campaignIds };
 }
