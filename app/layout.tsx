@@ -1,5 +1,10 @@
 import './globals.css';
+import './styles/glass.css';
 import { ReactNode } from 'react';
+import MotionProvider from '@/components/ui/MotionProvider';
+import { motionBootScript } from '@/components/ui/motion-boot';
+import { Backdrop } from '@/components/ui';
+import { poppins } from '@/components/brand/fonts';
 
 export const metadata = {
   title: 'Marketivity Client Portal',
@@ -15,9 +20,14 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={poppins.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: motionBootScript }} />
+      </head>
+      <body className="gx">
+        <Backdrop />
         {children}
+        <MotionProvider />
       </body>
     </html>
   );

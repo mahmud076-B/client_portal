@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Alert, Badge, BrandMark, Button, Field, Input } from "@/components/ui";
+import "@/app/login/login-glass.css";
 
 export default function InviteAcceptancePage() {
   const [password, setPassword] = useState("");
@@ -59,125 +61,45 @@ export default function InviteAcceptancePage() {
 
   if (!sessionChecked) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--c900)', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '30px', height: '30px', border: '3px solid rgba(255,255,255,.2)', borderTopColor: 'var(--white)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div className="lgx-main" aria-busy="true">
+        <span className="gx-spinner" style={{ width: 28, height: 28, color: 'var(--mk-orange)' }} aria-label="Checking invitation" />
       </div>
     );
   }
 
   return (
-    <div style={{
-      display: 'flex',
-      minHeight: '100vh',
-      background: 'var(--c900)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '1rem'
-    }}>
-      <div style={{
-        background: 'var(--white)',
-        width: '100%',
-        maxWidth: '440px',
-        borderRadius: 'var(--r-xl)',
-        padding: '3rem 2.5rem',
-        boxShadow: 'var(--sh-xl)'
-      }}>
-        
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: '.5rem',
-          fontFamily: 'var(--fh)', fontSize: '.7rem', fontWeight: 700,
-          letterSpacing: '.06em', textTransform: 'uppercase',
-          background: 'var(--c100)', color: 'var(--c600)',
-          padding: '.25rem .75rem', borderRadius: 'var(--r-pill)',
-          marginBottom: '1.5rem'
-        }}>
-          <span style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            background: 'var(--orange-500)',
-            animation: 'pulse-dot 2s ease-in-out infinite'
-          }} />
-          Marketivity Client Portal
+    <main className="lgx-main">
+      <div className="lgx-mobile-brand" style={{ display: 'block' }}><BrandMark /></div>
+      <div className="gx-card lgx-card" data-reveal="">
+        <Badge tone="brand" live>Invitation</Badge>
+        <div className="lgx-card__head">
+          <h2>Accept your invitation</h2>
+          <p>
+            Create a secure password to activate your account for <strong style={{ color: 'var(--mk-ink)' }}>{userEmail}</strong> and open your dashboard.
+          </p>
         </div>
 
-        <h2 style={{
-          fontFamily: 'var(--fh)', fontSize: '1.5rem',
-          fontWeight: 800, letterSpacing: '-.025em', color: 'var(--c900)',
-          marginBottom: '.625rem'
-        }}>Accept Invitation</h2>
-        <p style={{
-          fontSize: '.9375rem', color: 'var(--c500)', lineHeight: 1.65,
-          marginBottom: '2.5rem'
-        }}>Welcome! Please create a secure password to activate your account for <strong style={{color: 'var(--c900)'}}>{userEmail}</strong> and access your dashboard.</p>
+        {error && <Alert>{error}</Alert>}
 
-        {error && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '.625rem',
-            background: '#FEF2F2', border: '1px solid #FECACA',
-            borderRadius: 'var(--r-md)', padding: '.875rem 1rem',
-            marginBottom: '1.25rem', fontSize: '.875rem', color: '#B91C1C',
-            fontFamily: 'var(--fh)', fontWeight: 500
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleUpdate} noValidate>
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label htmlFor="password" style={{
-              display: 'block', fontFamily: 'var(--fh)', fontSize: '.8125rem',
-              fontWeight: 600, color: 'var(--c700)', marginBottom: '.5rem'
-            }}>New Password</label>
-            <input 
-              type="password" id="password" name="password" required
-              value={password} onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: '100%', padding: '13px 16px',
-                fontFamily: 'var(--fb)', fontSize: '.9375rem', color: 'var(--c900)',
-                background: 'var(--white)', border: '1.5px solid var(--c200)',
-                borderRadius: 'var(--r-md)', outline: 'none'
-              }} 
-            />
-          </div>
-
-          <div style={{ marginBottom: '2rem' }}>
-            <label htmlFor="confirmPassword" style={{
-              display: 'block', fontFamily: 'var(--fh)', fontSize: '.8125rem',
-              fontWeight: 600, color: 'var(--c700)', marginBottom: '.5rem'
-            }}>Confirm Password</label>
-            <input 
-              type="password" id="confirmPassword" name="confirmPassword" required
-              value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-              style={{
-                width: '100%', padding: '13px 16px',
-                fontFamily: 'var(--fb)', fontSize: '.9375rem', color: 'var(--c900)',
-                background: 'var(--white)', border: '1.5px solid var(--c200)',
-                borderRadius: 'var(--r-md)', outline: 'none'
-              }} 
-            />
-          </div>
-
-          <button type="submit" disabled={loading} style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem',
-            fontFamily: 'var(--fh)', fontSize: '.9375rem', fontWeight: 700,
-            background: 'var(--c900)', color: 'var(--white)', border: 'none', borderRadius: 'var(--r-md)',
-            padding: '14px 28px', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '.01em',
-            boxShadow: 'var(--sh-lg)', position: 'relative', overflow: 'hidden'
-          }}>
-            {loading ? (
-              <div style={{
-                width: '20px', height: '20px', border: '2px solid rgba(255,255,255,.3)',
-                borderTopColor: 'var(--white)', borderRadius: '50%', animation: 'spin .7s linear infinite'
-              }} />
-            ) : (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Activate & Continue
+        <form onSubmit={handleUpdate} noValidate className="lgx-form">
+          <Field label="New password" htmlFor="password" hint="At least 6 characters.">
+            <Input type="password" id="password" name="password" required autoComplete="new-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          <Field label="Confirm password" htmlFor="confirmPassword">
+            <Input type="password" id="confirmPassword" name="confirmPassword" required autoComplete="new-password"
+              value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          </Field>
+          <Button type="submit" variant="primary" size="lg" block loading={loading}>
+            {loading ? 'Activating…' : (
+              <>
+                Activate &amp; continue
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </span>
+              </>
             )}
-          </button>
+          </Button>
         </form>
       </div>
-    </div>
+    </main>
   );
 }

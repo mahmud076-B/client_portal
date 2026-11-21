@@ -118,26 +118,11 @@ function round(n: number, dp: number) {
   return Math.round(n * f) / f;
 }
 
-export type DerivedStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIVED' | 'DELETED' | 'IN_REVIEW' | 'REJECTED' | 'OTHER';
-
 /**
- * Meta keeps effective_status = ACTIVE after a campaign's stop time, so a
- * campaign whose end_time is in the past is treated as COMPLETED.
+ * Campaign status lives in one place: lib/meta/results.ts (deriveDeliveryStatus).
+ * Use `deriveDeliveryStatus(c).code` for the coarse status.
  */
-export function deriveStatus(
-  c: { status?: string | null; effective_status?: string | null; end_time?: string | null },
-  now: Date = new Date()
-): DerivedStatus {
-  const eff = (c.effective_status || c.status || '').toUpperCase();
-  if (eff === 'DELETED') return 'DELETED';
-  if (eff === 'ARCHIVED') return 'ARCHIVED';
-  if (c.end_time && new Date(c.end_time).getTime() < now.getTime()) return 'COMPLETED';
-  if (eff === 'ACTIVE') return 'ACTIVE';
-  if (eff.includes('PAUSED')) return 'PAUSED';
-  if (eff === 'IN_PROCESS' || eff === 'PENDING_REVIEW') return 'IN_REVIEW';
-  if (eff === 'DISAPPROVED' || eff === 'WITH_ISSUES') return 'REJECTED';
-  return 'OTHER';
-}
+export type { DerivedStatus } from '@/lib/meta/results';
 
 /** Human label for a metric column name, e.g. messaging_conversations_started -> "messaging conversations started". */
 export function metricLabel(key: string) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { deriveDeliveryStatus } from '@/lib/meta/results';
+import { deriveDeliveryStatus, objectiveLabel } from '@/lib/meta/results';
 import { discoverCampaigns, registerCampaign, assignCampaign } from './actions';
 
 export default function CampaignsManager({
@@ -152,7 +152,7 @@ export default function CampaignsManager({
                                                     {campaign.objective && (
                                                         <span className="text-xs text-gray-500 flex items-center gap-1">
                                                             <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                                            {campaign.objective.replace(/_/g, ' ')}
+                                                            {objectiveLabel(campaign.objective, campaign.optimization_goal)}
                                                         </span>
                                                     )}
                                                 </div>

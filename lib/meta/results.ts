@@ -250,7 +250,9 @@ export function computeResult(
 /* ───────────────────────── Delivery status ───────────────────────── */
 
 export type DeliveryTone = 'green' | 'amber' | 'gray' | 'red' | 'blue' | 'ink';
-export interface DeliveryStatus { key: string; label: string; tone: DeliveryTone; description: string; isLive: boolean }
+/** Coarse machine-readable status used by events/AI (one source of truth with the UI label). */
+export type DerivedStatus = 'ACTIVE' | 'SCHEDULED' | 'PAUSED' | 'COMPLETED' | 'ARCHIVED' | 'DELETED' | 'IN_REVIEW' | 'REJECTED' | 'OTHER';
+export interface DeliveryStatus { key: string; code: DerivedStatus; label: string; tone: DeliveryTone; description: string; isLive: boolean }
 
 /**
  * Human delivery status, like Ads Manager's "Delivery" column.
@@ -266,37 +268,42 @@ export function deriveDeliveryStatus(
     const notStarted = !!c.start_time && new Date(c.start_time).getTime() > now.getTime();
 
     switch (eff) {
-        case 'DELETED': return { key: 'deleted', label: 'Deleted', tone: 'gray', description: 'This campaign was deleted in Meta.', isLive: false };
-        case 'ARCHIVED': return { key: 'archived', label: 'Archived', tone: 'gray', description: 'This campaign is archived.', isLive: false };
-        case 'DISAPPROVED': return { key: 'disapproved', label: 'Rejected', tone: 'red', description: 'Meta rejected one or more ads. Your account team is on it.', isLive: false };
-        case 'WITH_ISSUES': return { key: 'issues', label: 'Has issues', tone: 'red', description: 'Meta reported a delivery issue. Your account team is reviewing it.', isLive: false };
+        case 'DELETED': return { key: 'deleted', code: 'DELETED', label: 'Deleted', tone: 'gray', description: 'This campaign was deleted in Meta.', isLive: false };
+        case 'ARCHIVED': return { key: 'archived', code: 'ARCHIVED', label: 'Archived', tone: 'gray', description: 'This campaign is archived.', isLive: false };
+        case 'DISAPPROVED': return { key: 'disapproved', code: 'REJECTED', label: 'Rejected', tone: 'red', description: 'Meta rejected one or more ads. Your account team is on it.', isLive: false };
+        case 'WITH_ISSUES': return { key: 'issues', code: 'REJECTED', label: 'Has issues', tone: 'red', description: 'Meta reported a delivery issue. Your account team is reviewing it.', isLive: false };
     }
     if (ended && eff !== 'PAUSED') {
-        return { key: 'completed', label: 'Completed', tone: 'ink', description: `Finished on ${new Date(c.end_time!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`, isLive: false };
+        return { key: 'completed', code: 'COMPLETED', label: 'Completed', tone: 'ink', description: `Finished on ${new Date(c.end_time!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`, isLive: false };
     }
     switch (eff) {
         case 'ACTIVE':
             return notStarted
-                ? { key: 'scheduled', label: 'Scheduled', tone: 'blue', description: 'This campaign will start soon.', isLive: false }
-                : { key: 'active', label: 'Active', tone: 'green', description: 'Your campaign is live and delivering.', isLive: true };
+                ? { key: 'scheduled', code: 'SCHEDULED', label: 'Scheduled', tone: 'blue', description: 'This campaign will start soon.', isLive: false }
+                : { key: 'active', code: 'ACTIVE', label: 'Active', tone: 'green', description: 'Your campaign is live and delivering.', isLive: true };
         case 'PAUSED':
         case 'CAMPAIGN_PAUSED':
-            return { key: 'paused', label: 'Paused', tone: 'amber', description: 'Delivery is paused.', isLive: false };
+            return { key: 'paused', code: 'PAUSED', label: 'Paused', tone: 'amber', description: 'Delivery is paused.', isLive: false };
         case 'ADSET_PAUSED':
-            return { key: 'paused', label: 'Ad sets paused', tone: 'amber', description: 'All ad sets are paused.', isLive: false };
+            return { key: 'paused', code: 'PAUSED', label: 'Ad sets paused', tone: 'amber', description: 'All ad sets are paused.', isLive: false };
         case 'IN_PROCESS':
-            return { key: 'processing', label: 'Processing', tone: 'blue', description: 'Meta is applying recent changes.', isLive: false };
+            return { key: 'processing', code: 'IN_REVIEW', label: 'Processing', tone: 'blue', description: 'Meta is applying recent changes.', isLive: false };
         case 'PENDING_REVIEW':
         case 'PREAPPROVED':
-            return { key: 'review', label: 'In review', tone: 'blue', description: 'Meta is reviewing the ads.', isLive: false };
+            return { key: 'review', code: 'IN_REVIEW', label: 'In review', tone: 'blue', description: 'Meta is reviewing the ads.', isLive: false };
         case 'PENDING_BILLING_INFO':
-            return { key: 'billing', label: 'Billing needed', tone: 'red', description: 'Delivery is waiting on billing.', isLive: false };
+            return { key: 'billing', code: 'OTHER', label: 'Billing needed', tone: 'red', description: 'Delivery is waiting on billing.', isLive: false };
     }
-    return { key: 'unknown', label: eff ? eff.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (s) => s.toUpperCase()) : 'Unknown', tone: 'gray', description: 'Status synced from Meta.', isLive: false };
+    return { key: 'unknown', code: 'OTHER', label: eff ? eff.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (s) => s.toUpperCase()) : 'Unknown', tone: 'gray', description: 'Status synced from Meta.', isLive: false };
 }
 
 /** Friendly objective name for display. */
-export function objectiveLabel(objective?: string | null): string {
+export function objectiveLabel(objective?: string | null, optimizationGoal?: string | null): string {
+    // The ad set goal is more specific than the ODAX objective (e.g. Engagement -> Followers).
+    const goal = (optimizationGoal || '').toUpperCase();
+    if (goal === 'PAGE_LIKES') return 'Followers';
+    if (goal === 'THRUPLAY') return 'Video views';
+    if (goal === 'CONVERSATIONS' || goal.startsWith('MESSAGING_')) return 'Messages';
     if (!objective) return 'Not set';
     const map: Record<string, string> = {
         OUTCOME_AWARENESS: 'Awareness', OUTCOME_ENGAGEMENT: 'Engagement', OUTCOME_LEADS: 'Leads',

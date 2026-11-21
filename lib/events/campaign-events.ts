@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { deriveStatus, metricLabel, resultColumns, sumInsights, type DerivedStatus, type MetricTotals } from '@/lib/campaigns/metrics';
+import { metricLabel, resultColumns, sumInsights, type MetricTotals } from '@/lib/campaigns/metrics';
+import { deriveDeliveryStatus, type DerivedStatus } from '@/lib/meta/results';
 
 /**
  * Live-updates event generation.
@@ -84,7 +85,7 @@ export async function snapshotAccountCampaigns(
         name: c.name,
         objective: c.objective ?? null,
         effective_status: c.effective_status ?? c.status ?? null,
-        derived_status: deriveStatus(c),
+        derived_status: deriveDeliveryStatus(c).code,
         lifetime_budget: c.lifetime_budget != null ? Number(c.lifetime_budget) : null,
         totals: sumInsights(rowsByCampaign.get(c.id) ?? []),
       });

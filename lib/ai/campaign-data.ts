@@ -2,7 +2,8 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { UserProfile } from '@/lib/supabase/auth';
-import { deriveRatios, deriveStatus, sumInsights } from '@/lib/campaigns/metrics';
+import { deriveRatios, sumInsights } from '@/lib/campaigns/metrics';
+import { deriveDeliveryStatus, objectiveLabel } from '@/lib/meta/results';
 
 /**
  * Data access for the AI assistant and the Live Updates feed.
@@ -55,7 +56,7 @@ export async function listClients(scope: Scope) {
 export async function listCampaigns(scope: Scope, opts: { clientId?: string } = {}) {
   let query = scope.supabase
     .from('campaigns')
-    .select('id, name, objective, status, effective_status, daily_budget, lifetime_budget, start_time, end_time, ad_account_id, updated_at')
+    .select('id, name, objective, optimization_goal, status, effective_status, daily_budget, lifetime_budget, start_time, end_time, ad_account_id, updated_at')
     .order('start_time', { ascending: false, nullsFirst: false });
 
   // Clients are already scoped by RLS; the filter is an admin convenience.
@@ -73,8 +74,9 @@ export async function listCampaigns(scope: Scope, opts: { clientId?: string } = 
     campaigns: (data || []).map((c) => ({
       id: c.id,
       name: c.name,
-      objective: c.objective,
-      status: deriveStatus(c),
+      objective: objectiveLabel(c.objective, c.optimization_goal),
+      status: deriveDeliveryStatus(c).code,
+      status_label: deriveDeliveryStatus(c).label,
       meta_effective_status: c.effective_status ?? c.status,
       daily_budget: c.daily_budget,
       lifetime_budget: c.lifetime_budget,
@@ -92,7 +94,7 @@ export async function getCampaignMetrics(
   // RLS check: the campaign must be visible to this user.
   const { data: campaign } = await scope.supabase
     .from('campaigns')
-    .select('id, name, objective, status, effective_status, end_time, lifetime_budget, daily_budget, ad_account_id')
+    .select('id, name, objective, optimization_goal, status, effective_status, start_time, end_time, lifetime_budget, daily_budget, ad_account_id')
     .eq('id', opts.campaignId)
     .maybeSingle();
   if (!campaign) return { error: 'Campaign not found or not accessible for this user.' };
@@ -122,8 +124,9 @@ export async function getCampaignMetrics(
     campaign: {
       id: campaign.id,
       name: campaign.name,
-      objective: campaign.objective,
-      status: deriveStatus(campaign),
+      objective: objectiveLabel(campaign.objective, campaign.optimization_goal),
+      status: deriveDeliveryStatus(campaign).code,
+      status_label: deriveDeliveryStatus(campaign).label,
       lifetime_budget: campaign.lifetime_budget,
       daily_budget: campaign.daily_budget,
       end_time: campaign.end_time,

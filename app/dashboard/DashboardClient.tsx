@@ -315,12 +315,6 @@ export default function DashboardClient({
         </div>
       ) : (<>
 
-      {/* Top Bar - Campaign Selector & Sync Status */}
-      <div className="demo-notice fade-up">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>Data is synced from the Meta Marketing API via a secure backend cron job.</span>
-      </div>
-
       <div className="dash-header fade-up">
         <div>
           <h1 className="dash-greeting" suppressHydrationWarning>
@@ -355,7 +349,7 @@ export default function DashboardClient({
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
           <div className="selector-label">Objective</div>
-          <div className="selector-val">{objectiveLabel(selectedCampaign?.objective)}</div>
+          <div className="selector-val">{objectiveLabel(selectedCampaign?.objective, selectedCampaign?.optimization_goal)}</div>
         </div>
         <div className="campaign-bar-divider"></div>
         <div className="selector-group">
@@ -512,7 +506,7 @@ export default function DashboardClient({
             <div className="status-details">
               <div className="detail-row"><span className="detail-key">Campaign Name</span><span className="detail-val">{selectedCampaign?.name || 'No Name'}</span></div>
               <div className="detail-row"><span className="detail-key">Status</span><span className="detail-val">{delivery.label}</span></div>
-              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">{objectiveLabel(selectedCampaign?.objective)}</span></div>
+              <div className="detail-row"><span className="detail-key">Objective</span><span className="detail-val">{objectiveLabel(selectedCampaign?.objective, selectedCampaign?.optimization_goal)}</span></div>
               <div className="detail-row"><span className="detail-key">Started</span><span className="detail-val">{selectedCampaign?.start_time ? new Date(selectedCampaign.start_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</span></div>
               <div className="detail-row"><span className="detail-key">Result metric</span><span className="detail-val">{resultLabel}</span></div>
               <div className="detail-row"><span className="detail-key">End Date</span><span className="detail-val">{selectedCampaign?.end_time ? new Date(selectedCampaign.end_time).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Ongoing'}</span></div>

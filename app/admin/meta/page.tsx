@@ -52,26 +52,20 @@ export default async function MetaAdminPage() {
             <div className="max-w-5xl mx-auto space-y-8">
                 
                 {/* Header Section */}
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#4b2c82] via-[#6F42C1] to-[#9a67ea] shadow-xl p-8 sm:p-10 text-white">
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-                    <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                        <div className="max-w-2xl">
-                            <h2 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-                                Meta Marketing API Integration
-                            </h2>
-                            <p className="text-purple-100 text-lg leading-relaxed">
-                                Connect your Meta Business Manager to synchronize Ad Accounts, Campaigns, and Insights into the Marketivity Client Portal.
-                            </p>
-                        </div>
-                        <div className="flex-shrink-0">
-                            <div className="p-4 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-inner flex items-center justify-center">
-                                <svg className="h-12 w-12 text-white opacity-90 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                                </svg>
-                            </div>
-                        </div>
+                <header className="gx-page-header" data-reveal="">
+                    <div className="gx-page-header__text">
+                        <span className="gx-eyebrow">Integrations</span>
+                        <h1 className="gx-h1">Meta Marketing API</h1>
+                        <p className="gx-lead">
+                            Connect your Meta Business Manager to synchronize Ad Accounts, Campaigns, and Insights into the Marketivity Client Portal.
+                        </p>
                     </div>
-                </div>
+                    <span className="gx-kpi__icon" style={{ width: 56, height: 56, borderRadius: 18, color: '#1877F2' }} aria-hidden>
+                        <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                        </svg>
+                    </span>
+                </header>
 
                 {/* Connection Status Card */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300">

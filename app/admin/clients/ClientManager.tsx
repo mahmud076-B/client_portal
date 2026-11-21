@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { inviteClient } from './actions';
+import { Alert, Button, Field, Input } from '@/components/ui';
+import Modal from '@/components/ui/Modal';
 
 export default function ClientManager() {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,103 +43,45 @@ export default function ClientManager() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '2rem' }}>
-        <button
-          onClick={() => setIsOpen(true)}
-          style={{
-            background: 'var(--c900)', color: 'var(--white)',
-            border: 'none', padding: '10px 20px', borderRadius: 'var(--r-md)',
-            fontFamily: 'var(--fh)', fontSize: '0.875rem', fontWeight: 600,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
-            boxShadow: 'var(--sh-sm)'
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Client
-        </button>
-      </div>
+      <Button variant="primary" onClick={() => setIsOpen(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Client
+      </Button>
 
       {isOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 50, padding: '1rem'
-        }}>
-          <div style={{
-            background: 'var(--white)', borderRadius: 'var(--r-lg)',
-            width: '100%', maxWidth: '480px', overflow: 'hidden',
-            boxShadow: 'var(--sh-xl)'
-          }}>
-            <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--c200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontFamily: 'var(--fh)', fontSize: '1.125rem', fontWeight: 700, margin: 0, color: 'var(--c900)' }}>
-                Invite New Client
-              </h3>
-              <button 
-                onClick={() => setIsOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c500)' }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+        <Modal onClose={() => setIsOpen(false)} labelledBy="invite-title">
+            <div className="gx-card__head">
+              <div>
+                <div className="gx-card__title" id="invite-title" style={{ fontSize: '1.125rem' }}>Invite new client</div>
+                <div className="gx-card__sub">They&apos;ll get a secure link to set up portal access.</div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </Button>
             </div>
-            
-            <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
-              {error && (
-                <div style={{ background: '#FEF2F2', color: '#B91C1C', padding: '0.75rem 1rem', borderRadius: 'var(--r-md)', marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 500 }}>
-                  {error}
-                </div>
-              )}
-              {success && (
-                <div style={{ background: '#ECFDF5', color: '#047857', padding: '0.75rem 1rem', borderRadius: 'var(--r-md)', marginBottom: '1rem', fontSize: '0.875rem', fontWeight: 500 }}>
-                  {success}
-                </div>
-              )}
 
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label htmlFor="businessName" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--c700)' }}>Business Name</label>
-                <input 
-                  type="text" id="businessName" name="businessName" required
-                  style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--c300)', borderRadius: 'var(--r-md)', fontSize: '0.875rem', outline: 'none' }}
-                />
-              </div>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
+              {error && <Alert>{error}</Alert>}
+              {success && <Alert tone="success">{success}</Alert>}
 
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label htmlFor="contactName" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--c700)' }}>Contact Name</label>
-                <input 
-                  type="text" id="contactName" name="contactName" required
-                  style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--c300)', borderRadius: 'var(--r-md)', fontSize: '0.875rem', outline: 'none' }}
-                />
-              </div>
+              <Field label="Business name" htmlFor="businessName">
+                <Input type="text" id="businessName" name="businessName" required />
+              </Field>
+              <Field label="Contact name" htmlFor="contactName">
+                <Input type="text" id="contactName" name="contactName" required />
+              </Field>
+              <Field label="Email address" htmlFor="email" hint="An invitation link will be sent to this email address.">
+                <Input type="email" id="email" name="email" required />
+              </Field>
 
-              <div style={{ marginBottom: '2rem' }}>
-                <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--c700)' }}>Email Address</label>
-                <input 
-                  type="email" id="email" name="email" required
-                  style={{ width: '100%', padding: '0.625rem 0.75rem', border: '1px solid var(--c300)', borderRadius: 'var(--r-md)', fontSize: '0.875rem', outline: 'none' }}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--c500)', marginTop: '0.5rem' }}>
-                  An invitation link will be sent to this email address.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button 
-                  type="button" 
-                  onClick={() => setIsOpen(false)}
-                  style={{ background: 'var(--c100)', color: 'var(--c700)', border: 'none', padding: '0.625rem 1rem', borderRadius: 'var(--r-md)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  style={{ background: 'var(--orange-500)', color: 'var(--white)', border: 'none', padding: '0.625rem 1rem', borderRadius: 'var(--r-md)', fontSize: '0.875rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
-                >
-                  {loading ? 'Sending...' : 'Send Invitation'}
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.75rem', marginTop: '.5rem', flexWrap: 'wrap' }}>
+                <Button onClick={() => setIsOpen(false)}>Cancel</Button>
+                <Button type="submit" variant="primary" loading={loading}>
+                  {loading ? 'Sending…' : 'Send invitation'}
+                </Button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
