@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { isRevealed, REVEAL_THRESHOLDS } from '@/lib/ui/reveal';
 
 /**
  * Site-wide scroll choreography. Any element matching REVEAL_SELECTOR floats
@@ -38,17 +39,26 @@ export default function MotionProvider() {
         let step = 0;
         for (const entry of entries) {
           const el = entry.target as HTMLElement;
-          if (entry.isIntersecting) {
+          const shown = isRevealed(
+            {
+              isIntersecting: entry.isIntersecting,
+              intersectionRatio: entry.intersectionRatio,
+              visibleHeight: entry.intersectionRect.height,
+              height: entry.boundingClientRect.height,
+            },
+            window.innerHeight,
+          );
+          if (shown) {
             el.style.setProperty('--rv-delay', `${Math.min(step++, MAX_STAGGER_STEPS) * STAGGER_MS}ms`);
             el.dataset.rv = 'in';
-          } else {
+          } else if (!entry.isIntersecting) {
             el.style.setProperty('--rv-delay', '0ms');
             el.dataset.rvDir = entry.boundingClientRect.top < 0 ? 'up' : 'down';
             el.dataset.rv = 'out';
           }
         }
       },
-      { threshold: 0.08, rootMargin: '0px 0px -6% 0px' },
+      { threshold: REVEAL_THRESHOLDS, rootMargin: '0px 0px -6% 0px' },
     );
 
     const seen = new WeakSet<Element>();
