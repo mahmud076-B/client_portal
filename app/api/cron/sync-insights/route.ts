@@ -39,7 +39,7 @@ export async function GET(request: Request) {
             throw new Error(`Failed to fetch meta connections: ${connError.message}`);
         }
 
-        const syncResults = [];
+        const syncResults: any[] = [];
 
         for (const conn of connections || []) {
             try {
@@ -435,6 +435,7 @@ export async function GET(request: Request) {
                         .update({ status: 'disconnected' })
                         .eq('id', conn.id);
                     console.log(`[Sync] Disconnected meta_connection ${conn.id} due to OAuth token error (Code 190).`);
+                    syncResults.push({ org: conn.organization_id, status: 'failed', error: 'Meta token expired or revoked (code 190); connection marked disconnected.' });
                 }
 
             } catch (connIterError: any) {
@@ -443,6 +444,20 @@ export async function GET(request: Request) {
             }
         }
 
+        // Non-200 on any failure so the GitHub Actions / cron caller surfaces it instead of silently "succeeding".
+        if (!connections || connections.length === 0) {
+            return NextResponse.json(
+                { success: false, error: 'No connected Meta connection. Reconnect Meta or save a System User token on /admin/meta.', results: syncResults },
+                { status: 503 }
+            );
+        }
+        const failed = syncResults.filter((r: any) => r?.status === 'failed');
+        if (failed.length > 0) {
+            return NextResponse.json(
+                { success: false, failed: failed.length, total: syncResults.length, results: syncResults },
+                { status: 502 }
+            );
+        }
         return NextResponse.json({ success: true, results: syncResults });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

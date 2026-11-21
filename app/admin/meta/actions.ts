@@ -4,6 +4,8 @@ import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import { MetaServerClient } from '@/lib/meta/server/client';
 import { revalidatePath } from 'next/cache';
+import { inspectAccessToken } from '@/lib/meta/server/oauth';
+import { encryptToken } from '@/lib/meta/server/crypto';
 
 /**
  * Discovers Ad Accounts using the connected Meta API.
@@ -36,8 +38,35 @@ export async function discoverAdAccounts() {
         
         return { success: true, accounts };
     } catch (error: any) {
-        // Return a normalized, safe error message to the browser
-        return { success: false, error: 'Failed to discover Ad Accounts. Your token may have expired.' };
+        const metaError = error?.metaError;
+        // Log the real cause server-side (Meta error objects never contain the token).
+        console.error('[discoverAdAccounts] Meta error:', {
+            code: metaError?.code,
+            subcode: metaError?.error_subcode,
+            type: metaError?.type,
+            message: metaError?.message ?? error?.message,
+            fbtrace_id: metaError?.fbtrace_id,
+        });
+
+        if (metaError?.code === 190) {
+            // Token expired / revoked / password changed: reflect it in the DB so the UI stops saying "Active".
+            await supabase
+                .from('meta_connections')
+                .update({ status: 'disconnected', updated_at: new Date().toISOString() })
+                .eq('organization_id', profile.organization_id);
+            revalidatePath('/admin/meta');
+            return { success: false, error: 'Meta token expired or was revoked. Click "Reconnect" to sign in to Meta again.' };
+        }
+        if ([10, 200, 294].includes(metaError?.code)) {
+            return { success: false, error: `Meta permission missing (${metaError.message}). Reconnect and grant ads_read / business_management, or check your role on the ad accounts.` };
+        }
+        if ([4, 17, 32, 613].includes(metaError?.code)) {
+            return { success: false, error: 'Meta rate limit reached. Try again in a few minutes.' };
+        }
+        return {
+            success: false,
+            error: `Failed to discover Ad Accounts: ${metaError?.message ?? 'Meta API request failed.'}${metaError?.fbtrace_id ? ` (trace ${metaError.fbtrace_id})` : ''}`,
+        };
     }
 }
 
@@ -296,4 +325,68 @@ export async function assignCampaign(localCampaignId: string, localClientId: str
         console.error('assignCampaign Exception:', error);
         return { success: false, error: error.message || 'An unexpected server error occurred.' };
     }
+}
+
+export type SystemTokenState = { success: boolean; message: string } | null;
+
+/**
+ * Saves a Meta Business System User token (can be generated with "Never" expiry) as the
+ * organization's Meta connection. Validated against Graph first, then encrypted exactly like
+ * the OAuth callback does. The raw token is never logged or returned.
+ */
+export async function saveSystemUserToken(_prev: SystemTokenState, formData: FormData): Promise<SystemTokenState> {
+    const { profile } = await requireAdmin();
+
+    const raw = formData.get('token');
+    const token = typeof raw === 'string' ? raw.trim() : '';
+    if (!token || token.length < 20 || /\s/.test(token)) {
+        return { success: false, message: 'Paste the full access token (no spaces).' };
+    }
+
+    let inspected;
+    try {
+        inspected = await inspectAccessToken(token);
+    } catch (error: any) {
+        return { success: false, message: `Meta rejected the token: ${error?.message ?? 'validation failed'}` };
+    }
+
+    const missing = inspected.scopes
+        ? ['ads_read', 'business_management'].filter((s) => !inspected.scopes!.includes(s) && !(s === 'ads_read' && inspected.scopes!.includes('ads_management')))
+        : [];
+    if (missing.length > 0) {
+        return { success: false, message: `Token is missing permission(s): ${missing.join(', ')}. Regenerate it with ads_read and business_management.` };
+    }
+
+    const encryptedData = encryptToken(token);
+    const supabase = await createClient();
+    const now = new Date().toISOString();
+    const { error: dbError } = await supabase
+        .from('meta_connections')
+        .upsert({
+            organization_id: profile.organization_id,
+            meta_user_id: inspected.metaUserId,
+            encrypted_token: encryptedData.encryptedToken,
+            auth_tag: encryptedData.authTag,
+            iv: encryptedData.iv,
+            status: 'connected',
+            last_validated_at: now,
+            token_expires_at: inspected.expiresAt,
+            updated_at: now,
+        }, {
+            onConflict: 'organization_id',
+        });
+
+    if (dbError) {
+        console.error('[saveSystemUserToken] Database error:', dbError.message);
+        return { success: false, message: 'Token is valid but could not be saved (database error).' };
+    }
+
+    revalidatePath('/admin/meta');
+    const who = inspected.name ? `${inspected.name} (${inspected.metaUserId})` : inspected.metaUserId;
+    return {
+        success: true,
+        message: inspected.expiresAt
+            ? `Connected as ${who}. Note: this token expires on ${new Date(inspected.expiresAt).toUTCString()}.`
+            : `Connected as ${who}. This token never expires.`,
+    };
 }

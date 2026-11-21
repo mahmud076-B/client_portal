@@ -98,7 +98,7 @@ export class MetaServerClient {
         const response = await fetch(url);
 
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({}));
             const errorObj = new Error(`Meta API Error: ${error.error?.message || 'Unknown error'}`);
             (errorObj as any).metaError = error.error;
             throw errorObj;
@@ -130,7 +130,9 @@ export class MetaServerClient {
                 timezone_name: account.timezone_name
             }));
         } catch (error: any) {
-            throw new Error(`Failed to retrieve Ad Accounts: ${error.message}`);
+            const wrapped = new Error(`Failed to retrieve Ad Accounts: ${error.message}`);
+            (wrapped as any).metaError = error.metaError; // keep Meta code/subcode for callers
+            throw wrapped;
         }
     }
 
