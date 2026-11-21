@@ -1,16 +1,19 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { metricLabel, resultColumns, sumInsights, type MetricTotals } from '@/lib/campaigns/metrics';
-import { deriveDeliveryStatus, type DerivedStatus } from '@/lib/meta/results';
+import { sumInsights, type MetricTotals } from '@/lib/campaigns/metrics';
+import { computeResult, deriveDeliveryStatus, resolveResultSpecForData, type DerivedStatus, type InsightRow } from '@/lib/meta/results';
 import { buildPerformanceInsights, localDay, type InsightDayRow, type InsightEventType } from '@/lib/events/performance-insights';
+import { formatCount, formatMoney } from '@/lib/format';
 
 /**
  * Live-updates event generation.
  *
  * The sync job calls `snapshotAccountCampaigns` before and after it refreshes an
- * ad account, then `recordCampaignEvents` diffs the two snapshots and writes
- * idempotent rows to public.campaign_events. Failures here are logged and
- * swallowed so they can never break the sync itself.
+ * ad account, then `recordCampaignEvents` diffs the two snapshots PER CAMPAIGN
+ * (each event is computed only from that campaign's own rows) and writes one
+ * row per (campaign, assigned client) to public.campaign_events, so RLS can
+ * scope every row by client_id. Campaigns not assigned to any client produce no
+ * rows. Failures here are logged and swallowed so they never break the sync.
  */
 
 export interface CampaignSnapshot {
@@ -20,7 +23,13 @@ export interface CampaignSnapshot {
   effective_status: string | null;
   derived_status: DerivedStatus;
   lifetime_budget: number | null;
+  /** ISO end time (campaign or ad sets), used to tell a real completion from a status catch-up. */
+  end_time: string | null;
   totals: MetricTotals;
+  /** The campaign's own result (resolved from objective/goal + its data), e.g. messaging conversations. */
+  result: { label: string; total: number } | null;
+  /** Number of synced days; 0 = nothing synced yet (first sync is not "new results"). */
+  days: number;
 }
 
 export type AccountSnapshot = Map<string, CampaignSnapshot>;
@@ -36,7 +45,7 @@ export function rebaseSnapshotTotals(before: AccountSnapshot, fresh: AccountSnap
   const out: AccountSnapshot = new Map();
   for (const [id, b] of before) {
     const f = fresh.get(id);
-    out.set(id, f ? { ...b, totals: f.totals } : b);
+    out.set(id, f ? { ...b, totals: f.totals, result: f.result, days: f.days } : b);
   }
   return out;
 }
@@ -49,16 +58,41 @@ export type CampaignEventType =
   | 'budget_milestone'
   | InsightEventType;
 
-export interface CampaignEventInsert {
-  organization_id: string;
+/** A campaign-level event, before it is attributed to the campaign's clients. */
+export interface CampaignEvent {
   campaign_id: string;
   event_type: CampaignEventType;
   severity: 'info' | 'success' | 'warning';
   title: string;
   body: string | null;
   metadata: Record<string, unknown>;
-  dedupe_key: string;
+  /** Stable per-campaign idempotency key, e.g. "<campaign>:results:2026-11-21T19:30". */
+  event_key: string;
   occurred_at: string;
+}
+
+/** A row of public.campaign_events: always one campaign + one client it is assigned to. */
+export interface CampaignEventInsert extends CampaignEvent {
+  organization_id: string;
+  client_id: string;
+  dedupe_key: string;
+}
+
+/** campaign_id -> client ids it is assigned to (public.campaign_assignments). */
+export type AssignmentMap = Map<string, string[]>;
+
+/**
+ * Fan each campaign event out to the clients that campaign is assigned to. Pure.
+ * The row's campaign_id is always the event's own campaign; unassigned campaigns are dropped.
+ */
+export function attributeEvents(events: CampaignEvent[], organizationId: string, assignments: AssignmentMap): CampaignEventInsert[] {
+  const out: CampaignEventInsert[] = [];
+  for (const e of events) {
+    for (const clientId of new Set(assignments.get(e.campaign_id) ?? [])) {
+      out.push({ ...e, organization_id: organizationId, client_id: clientId, dedupe_key: `${clientId}:${e.event_key}` });
+    }
+  }
+  return out;
 }
 
 const PAGE = 1000;
@@ -70,7 +104,7 @@ export async function snapshotAccountCampaigns(
   try {
     const { data: campaigns, error } = await supabase
       .from('campaigns')
-      .select('id, name, objective, status, effective_status, end_time, lifetime_budget')
+      .select('id, name, objective, optimization_goal, status, effective_status, end_time, lifetime_budget')
       .eq('ad_account_id', adAccountId);
     if (error) throw error;
 
@@ -98,6 +132,7 @@ export async function snapshotAccountCampaigns(
     }
 
     for (const c of campaigns || []) {
+      const rows = rowsByCampaign.get(c.id) ?? [];
       snapshot.set(c.id, {
         id: c.id,
         name: c.name,
@@ -105,7 +140,10 @@ export async function snapshotAccountCampaigns(
         effective_status: c.effective_status ?? c.status ?? null,
         derived_status: deriveDeliveryStatus(c).code,
         lifetime_budget: c.lifetime_budget != null ? Number(c.lifetime_budget) : null,
-        totals: sumInsights(rowsByCampaign.get(c.id) ?? []),
+        end_time: c.end_time ?? null,
+        totals: sumInsights(rows),
+        result: campaignResult(c, rows as unknown as InsightRow[]),
+        days: rows.length,
       });
     }
     return snapshot;
@@ -113,6 +151,19 @@ export async function snapshotAccountCampaigns(
     console.warn(`[CampaignEvents] snapshot failed for ad_account=${adAccountId}: ${err?.message || err}`);
     return null;
   }
+}
+
+/** The campaign's own result total (same mapping as the dashboard), or null for reach/awareness-only. Pure. */
+export function campaignResult(
+  campaign: { objective?: string | null; optimization_goal?: string | null },
+  rows: InsightRow[]
+): { label: string; total: number } | null {
+  const spec = resolveResultSpecForData(campaign.objective, campaign.optimization_goal, rows);
+  if (!spec || spec.metric.kind === 'reach' || spec.metric.kind === 'impressions') return null;
+  const r = computeResult(spec, rows, { totalSpend: 0 });
+  if (r.pendingResync || r.total === null) return null;
+  const l = spec.label.split(' / ')[0];
+  return { label: /[A-Z].*[A-Z]/.test(l) ? l : l.toLowerCase(), total: r.total };
 }
 
 /** 100, 200, 500, 1k, 2k, 5k, ... — currency-agnostic "nice" spend steps. */
@@ -126,81 +177,90 @@ export function spendSteps(max: number): number[] {
   return steps;
 }
 
-function fmt(n: number, currency: string | null) {
-  const s = n.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  return currency ? `${currency} ${s}` : s;
-}
+const fmt = (n: number, currency: string | null) => formatMoney(n, currency);
 
-const TRAFFIC_OBJECTIVES = new Set(['OUTCOME_TRAFFIC', 'LINK_CLICKS', 'TRAFFIC']);
+/** A completion is news only if the campaign ended within this window. */
+export const STATUS_NEWS_WINDOW_MS = 48 * 3600_000;
 
-/** Pure diff: exported for testing. */
+/**
+ * Pure per-campaign diff (exported for testing). Each event is built only from
+ * `before.get(id)` / `after.get(id)` of the SAME campaign id.
+ */
 export function diffSnapshots(params: {
-  organizationId: string;
   before: AccountSnapshot;
   after: AccountSnapshot;
   currency: string | null;
   syncedAt: Date;
-}): CampaignEventInsert[] {
-  const { organizationId, before, after, currency, syncedAt } = params;
+}): CampaignEvent[] {
+  const { before, after, currency, syncedAt } = params;
   const occurred_at = syncedAt.toISOString();
   const runKey = occurred_at.slice(0, 16); // minute bucket for per-run events
-  const events: CampaignEventInsert[] = [];
+  const events: CampaignEvent[] = [];
 
   for (const [id, now] of after) {
     const prev = before.get(id);
     if (!prev) continue; // newly discovered campaigns are not "updates"
 
-    // 1. Status / completion
-    if (prev.derived_status !== now.derived_status) {
+    // 1. Status / completion: only news about the present. Archiving/deleting is
+    //    housekeeping, and a campaign that ended days ago is a catch-up (e.g. the first
+    //    successful metadata refresh after an outage), not "has completed" today.
+    const endedLongAgo = now.end_time != null && Date.parse(now.end_time) < syncedAt.getTime() - STATUS_NEWS_WINDOW_MS;
+    const housekeeping = now.derived_status === 'ARCHIVED' || now.derived_status === 'DELETED';
+    if (prev.derived_status !== now.derived_status && !housekeeping && !(now.derived_status === 'COMPLETED' && endedLongAgo)) {
       if (now.derived_status === 'COMPLETED') {
         events.push({
-          organization_id: organizationId,
           campaign_id: id,
           event_type: 'campaign_completed',
           severity: 'success',
           title: `${now.name} has completed`,
           body: `Final spend ${fmt(now.totals.spend ?? 0, currency)}.`,
           metadata: { from: prev.derived_status, to: now.derived_status, totals: now.totals },
-          dedupe_key: `${id}:completed`,
+          event_key: `${id}:completed`,
           occurred_at,
         });
       } else {
         const warn = now.derived_status === 'REJECTED' || now.derived_status === 'PAUSED';
         events.push({
-          organization_id: organizationId,
           campaign_id: id,
           event_type: 'status_changed',
           severity: warn ? 'warning' : now.derived_status === 'ACTIVE' ? 'success' : 'info',
           title: `${now.name} is now ${now.derived_status.toLowerCase().replace('_', ' ')}`,
           body: `Status changed from ${prev.derived_status.toLowerCase().replace('_', ' ')}.`,
           metadata: { from: prev.derived_status, to: now.derived_status, effective_status: now.effective_status },
-          dedupe_key: `${id}:status:${prev.derived_status}->${now.derived_status}:${runKey}`,
+          event_key: `${id}:status:${prev.derived_status}->${now.derived_status}:${runKey}`,
           occurred_at,
         });
       }
     }
 
-    // 2. New results since the previous sync
-    const keys = resultColumns(now.totals);
-    if (now.objective && TRAFFIC_OBJECTIVES.has(now.objective.toUpperCase())) keys.push('clicks');
-    const deltas: Record<string, number> = {};
-    for (const k of keys) {
-      const d = Math.round((now.totals[k] ?? 0) - (prev.totals[k] ?? 0));
-      if (d > 0) deltas[k] = d;
-    }
-    if (Object.keys(deltas).length > 0) {
-      const parts = Object.entries(deltas).map(([k, d]) => `+${d.toLocaleString('en-US')} ${metricLabel(k)}`);
-      events.push({
-        organization_id: organizationId,
-        campaign_id: id,
-        event_type: 'new_results',
-        severity: 'success',
-        title: `${now.name}: ${parts.join(', ')}`,
-        body: null,
-        metadata: { deltas, spend_delta: Math.round(((now.totals.spend ?? 0) - (prev.totals.spend ?? 0)) * 100) / 100 },
-        dedupe_key: `${id}:results:${runKey}`,
-        occurred_at,
-      });
+    // 2. New results since the previous sync: the campaign's OWN result type only
+    //    (e.g. messaging conversations), never a mix of every Meta action type.
+    //    The first sync of a campaign (days 0 -> n) is history, not news.
+    const spendDelta = Math.round(((now.totals.spend ?? 0) - (prev.totals.spend ?? 0)) * 100) / 100;
+    if (prev.days > 0 && now.result && prev.result && now.result.label === prev.result.label) {
+      const delta = Math.round(now.result.total - prev.result.total);
+      if (delta > 0) {
+        const spendNow = now.totals.spend ?? 0;
+        events.push({
+          campaign_id: id,
+          event_type: 'new_results',
+          severity: 'success',
+          title: `${now.name}: +${formatCount(delta)} ${now.result.label}`,
+          body:
+            `${spendDelta > 0 ? `${fmt(spendDelta, currency)} spent since the previous sync. ` : ''}` +
+            `Total ${formatCount(now.result.total)} ${now.result.label} for ${fmt(spendNow, currency)}.`,
+          metadata: {
+            metric: now.result.label,
+            delta,
+            from: prev.result.total,
+            to: now.result.total,
+            spend_delta: spendDelta,
+            spend_total: spendNow,
+          },
+          event_key: `${id}:results:${runKey}`,
+          occurred_at,
+        });
+      }
     }
 
     // 3. Budget milestones (lifetime budget only)
@@ -213,14 +273,13 @@ export function diffSnapshots(params: {
       const top = crossed.at(-1);
       if (top) {
         events.push({
-          organization_id: organizationId,
           campaign_id: id,
           event_type: 'budget_milestone',
           severity: top === 100 ? 'warning' : 'info',
           title: `${now.name} has used ${top}% of its budget`,
           body: `${fmt(spendNow, currency)} of ${fmt(now.lifetime_budget, currency)} spent.`,
           metadata: { percent: top, spend: spendNow, lifetime_budget: now.lifetime_budget },
-          dedupe_key: `${id}:budget:${top}`,
+          event_key: `${id}:budget:${top}`,
           occurred_at,
         });
       }
@@ -231,14 +290,13 @@ export function diffSnapshots(params: {
     const step = crossedSteps.at(-1);
     if (step) {
       events.push({
-        organization_id: organizationId,
         campaign_id: id,
         event_type: 'spend_milestone',
         severity: 'info',
         title: `${now.name} passed ${fmt(step, currency)} in spend`,
         body: `Total spend is now ${fmt(spendNow, currency)}.`,
         metadata: { milestone: step, spend: spendNow },
-        dedupe_key: `${id}:spend:${step}`,
+        event_key: `${id}:spend:${step}`,
         occurred_at,
       });
     }
@@ -253,7 +311,7 @@ export function diffSnapshots(params: {
 export async function buildAccountPerformanceEvents(
   supabase: SupabaseClient,
   params: { organizationId: string; adAccountId: string; currency?: string | null; timezone?: string | null; now?: Date }
-): Promise<CampaignEventInsert[]> {
+): Promise<CampaignEvent[]> {
   const now = params.now ?? new Date();
   let tz = params.timezone || 'UTC';
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); } catch { tz = 'UTC'; }
@@ -287,26 +345,55 @@ export async function buildAccountPerformanceEvents(
   }
 
   const occurred_at = now.toISOString();
-  const out: CampaignEventInsert[] = [];
+  const out: CampaignEvent[] = [];
   for (const c of live) {
     const insights = buildPerformanceInsights({
       campaign: c, rows: rowsByCampaign.get(c.id) ?? [], today, dayFraction, currency: params.currency ?? null, now,
     });
     for (const e of insights) {
+      // One evaluation per campaign per judged (completed) day.
+      const day = typeof e.metadata.day === 'string' ? e.metadata.day : today;
       out.push({
-        organization_id: params.organizationId,
         campaign_id: c.id,
         event_type: e.type,
         severity: e.severity,
         title: e.title,
         body: e.body,
         metadata: { ...e.metadata, kind: e.kind, source: 'performance_insight' },
-        dedupe_key: `${c.id}:perf:${e.kind}:${today}`,
+        event_key: `${c.id}:perf:${e.kind}:${day}`,
         occurred_at,
       });
     }
   }
   return out;
+}
+
+async function loadAssignments(supabase: SupabaseClient, campaignIds: string[]): Promise<AssignmentMap> {
+  const map: AssignmentMap = new Map();
+  if (campaignIds.length === 0) return map;
+  const { data, error } = await supabase
+    .from('campaign_assignments')
+    .select('campaign_id, client_id')
+    .in('campaign_id', campaignIds);
+  if (error) throw error;
+  for (const a of data || []) {
+    const list = map.get(a.campaign_id) ?? [];
+    list.push(a.client_id);
+    map.set(a.campaign_id, list);
+  }
+  return map;
+}
+
+async function writeEvents(supabase: SupabaseClient, organizationId: string, events: CampaignEvent[]): Promise<number> {
+  if (events.length === 0) return 0;
+  const assignments = await loadAssignments(supabase, [...new Set(events.map((e) => e.campaign_id))]);
+  const rows = attributeEvents(events, organizationId, assignments);
+  if (rows.length === 0) return 0;
+  const { error } = await supabase
+    .from('campaign_events')
+    .upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+  if (error) throw error;
+  return rows.length;
 }
 
 export async function recordCampaignEvents(
@@ -324,20 +411,8 @@ export async function recordCampaignEvents(
     if (params.before) {
       const after = await snapshotAccountCampaigns(supabase, params.adAccountId);
       if (after) {
-        const events = diffSnapshots({
-          organizationId: params.organizationId,
-          before: params.before,
-          after,
-          currency: params.currency ?? null,
-          syncedAt: new Date(),
-        });
-        if (events.length > 0) {
-          const { error } = await supabase
-            .from('campaign_events')
-            .upsert(events, { onConflict: 'dedupe_key', ignoreDuplicates: true });
-          if (error) throw error;
-          written += events.length;
-        }
+        const events = diffSnapshots({ before: params.before, after, currency: params.currency ?? null, syncedAt: new Date() });
+        written += await writeEvents(supabase, params.organizationId, events);
       }
     }
   } catch (err: any) {
@@ -345,17 +420,10 @@ export async function recordCampaignEvents(
     console.warn(`[CampaignEvents] record failed for ad_account=${params.adAccountId}: ${err?.message || err}`);
   }
 
-  // Performance commentary is written separately so a missing CHECK-constraint
-  // migration (new event types) can never block the core status/results events.
+  // Performance commentary is written separately so a failure there never blocks status/results events.
   try {
     const perf = await buildAccountPerformanceEvents(supabase, params);
-    if (perf.length > 0) {
-      const { error } = await supabase
-        .from('campaign_events')
-        .upsert(perf, { onConflict: 'dedupe_key', ignoreDuplicates: true });
-      if (error) throw error;
-      written += perf.length;
-    }
+    written += await writeEvents(supabase, params.organizationId, perf);
   } catch (err: any) {
     console.warn(`[CampaignEvents] performance insights failed for ad_account=${params.adAccountId}: ${err?.message || err}`);
   }

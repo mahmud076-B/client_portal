@@ -1,6 +1,6 @@
 'use client';
 import './live-updates.css';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { poppins } from '@/components/brand/fonts';
 import { feedScopeQuery } from '@/lib/events/feed-scope';
@@ -55,33 +55,30 @@ function EventIcon({ type }: { type: FeedEvent['type'] }) {
 }
 
 /**
- * Live updates for the campaign selected on the dashboard. "All" means every campaign
- * on THIS dashboard (passed in), never every campaign the viewer can read via RLS
- * (admins can read the whole organization).
+ * Live updates for ONE campaign: the one selected on the dashboard. The feed is
+ * filtered by campaign id on the server (and by client id for client users),
+ * the realtime channel is filtered by campaign_id, and RLS enforces the same.
+ * Mount with `key={campaignId}` so switching campaigns never shows the previous
+ * campaign's events while the new ones load.
  */
-export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaignId?: string | null; campaignIds?: string[] }) {
-  const [events, setEvents] = useState<FeedEvent[] | null>(null);
+export default function LiveUpdates({ campaignId }: { campaignId: string | null }) {
+  const [events, setEvents] = useState<FeedEvent[] | null>(campaignId ? null : []);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
-  const [scope, setScope] = useState<'all' | 'campaign'>('campaign');
   const [live, setLive] = useState(false);
   const [polling, setPolling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
-  const allKey = campaignIds.join(',');
-  const showAll = scope === 'all' || !campaignId;
-  const scopedIds = useMemo(
-    () => (showAll ? (allKey ? allKey.split(',') : campaignId ? [campaignId] : []) : [campaignId!]),
-    [showAll, allKey, campaignId]
-  );
-  const qs = feedScopeQuery(scopedIds);
+  const qs = feedScopeQuery(campaignId ? [campaignId] : []);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/campaign-events${qs}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
-      const list: FeedEvent[] = [...(data.events || [])].sort(
+      const list: FeedEvent[] = [...(data.events || [])]
+        .filter((e: FeedEvent) => e.campaign_id === campaignId)
+        .sort(
         (a: FeedEvent, b: FeedEvent) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)
       );
       setEvents(list);
@@ -91,9 +88,10 @@ export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaign
       setPolling(false);
       setEvents((prev) => prev ?? []);
     }
-  }, [qs]);
+  }, [qs, campaignId]);
 
   useEffect(() => {
+    if (!campaignId) return;
     // Initial fetch; state is only set after the network round-trip.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
@@ -106,34 +104,32 @@ export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaign
       clearInterval(tick);
       window.removeEventListener('focus', onFocus);
     };
-  }, [load]);
+  }, [load, campaignId]);
 
-  // Supabase Realtime (RLS applies): only this campaign's inserts when one is selected.
+  // Supabase Realtime: only this campaign's inserts (server-side filter; RLS applies on top).
   useEffect(() => {
+    if (!campaignId) return;
     const supabase = createClient();
-    const single = scopedIds.length === 1 ? scopedIds[0] : null;
     const channel = supabase
-      .channel(`campaign-events-${single ?? 'dashboard'}`)
+      .channel(`campaign-events-${campaignId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'campaign_events', ...(single ? { filter: `campaign_id=eq.${single}` } : {}) },
-        (payload: { new?: { campaign_id?: string } }) => {
-          const cid = payload?.new?.campaign_id;
-          if (!cid || scopedIds.includes(cid)) load();
-        }
+        { event: 'INSERT', schema: 'public', table: 'campaign_events', filter: `campaign_id=eq.${campaignId}` },
+        () => load()
       )
       .subscribe((status) => setLive(status === 'SUBSCRIBED'));
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [load, scopedIds]);
+  }, [load, campaignId]);
 
   useEffect(() => {
+    if (!campaignId) return;
     fetch(`/api/ai/daily-summary${qs}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setSummary(d?.summary ?? null))
       .catch(() => setSummary(null));
-  }, [qs]);
+  }, [qs, campaignId]);
 
   return (
     <div className={`${poppins.variable} mk-lu`}>
@@ -143,12 +139,6 @@ export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaign
           Live updates
           {(live || polling) && <span className="mk-lu-livepill">LIVE</span>}
         </div>
-        {campaignId && campaignIds.length > 1 && (
-          <div className="mk-lu-toggle" role="tablist" aria-label="Filter updates">
-            <button type="button" role="tab" aria-selected={scope === 'all'} className={scope === 'all' ? 'on' : ''} onClick={() => setScope('all')}>All campaigns</button>
-            <button type="button" role="tab" aria-selected={scope === 'campaign'} className={scope === 'campaign' ? 'on' : ''} onClick={() => setScope('campaign')}>This campaign</button>
-          </div>
-        )}
       </div>
 
       <div className="mk-lu-sync">
@@ -168,7 +158,7 @@ export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaign
         </ul>
       ) : events.length === 0 ? (
         <div className="mk-lu-empty">
-          No updates yet. Performance changes (reach, cost per result, CTR, pacing), new results, status changes and milestones will appear here automatically.
+          No updates for this campaign yet. New results, status changes, milestones and day-over-day changes will appear here after each sync.
         </div>
       ) : (
         <ul className="mk-lu-list">
@@ -176,7 +166,6 @@ export default function LiveUpdates({ campaignId, campaignIds = [] }: { campaign
             <li key={e.id} className={`mk-lu-item sev-${e.severity}${now - Date.parse(e.occurred_at) < 3600_000 ? ' is-new' : ''}`}>
               <span className="mk-lu-icon"><EventIcon type={e.type} /></span>
               <div className="mk-lu-text">
-                {showAll && e.campaign_name && <div className="mk-lu-tag">{e.campaign_name}</div>}
                 <div className="mk-lu-item-title">{e.title}</div>
                 {e.body && <div className="mk-lu-item-body">{e.body}</div>}
                 <time className="mk-lu-time" dateTime={e.occurred_at} title={new Date(e.occurred_at).toLocaleString()}>

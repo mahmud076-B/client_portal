@@ -1,13 +1,17 @@
 import { computeResult, deriveDeliveryStatus, resolveResultSpecForData, type InsightRow } from '@/lib/meta/results';
+import { addDays } from '@/lib/dates';
+import { formatDay, formatMoney } from '@/lib/format';
 
 /**
  * Performance commentary for the Live Updates feed ("Running well now",
  * "Reach is down 25% vs yesterday", ...).
  *
- * Compares the latest day (today, pace-adjusted for the hours elapsed in the
- * ad account's timezone) against the previous day and the 7-day average
- * before it. Pure and dependency-free so it can be unit-tested; the sync job
- * persists the output through campaign_events (deduped per campaign per day).
+ * Deterministic: judges only the last COMPLETED day (yesterday in the ad
+ * account's timezone) against the calendar day before it and the 7-day
+ * average before that. Partial "today" numbers are never compared (they made
+ * the feed flip between "running well" and "slowing down" within one day),
+ * and a missing day (sync gap) is never used as a baseline. One evaluation per
+ * campaign per judged day (dedupe key uses the judged date). Pure.
  */
 
 export type InsightEventType = 'performance_up' | 'performance_down' | 'fatigue_warning' | 'pacing';
@@ -88,8 +92,11 @@ interface PreparedDays {
   latestRow: InsightDayRow;
   latestRaw: DayStats;
   latest: DayStats;
-  prev: DayStats;
+  /** The calendar day before `latestRow`, or null when that day is missing (sync gap). */
+  prev: DayStats | null;
   base7: DayStats | null;
+  todayRow: InsightDayRow | null;
+  dayFraction: number;
 }
 
 function prepareDays(params: {
@@ -97,7 +104,8 @@ function prepareDays(params: {
 }): PreparedDays | null {
   const { campaign, today } = params;
   const rows = [...params.rows].sort((a, b) => (a.date < b.date ? -1 : 1));
-  if (rows.length < 2) return null;
+  const complete = rows.filter((r) => r.date < today);
+  if (complete.length === 0) return null;
 
   const spec = resolveResultSpecForData(campaign.objective, campaign.optimization_goal, rows);
   const resultByDate = new Map<string, number>();
@@ -111,25 +119,22 @@ function prepareDays(params: {
     costLabel = spec.costLabel;
   }
 
-  // Latest day: today (pace-adjusted) if we have it and enough of the day elapsed, otherwise the last full day.
-  let latestIdx = rows.length - 1;
-  let scale = 1;
-  let label: 'today' | 'yesterday' = 'today';
-  if (rows[latestIdx].date === today) {
-    if (params.dayFraction < MIN_PACE_FRACTION) latestIdx -= 1;
-    else scale = 1 / Math.min(1, params.dayFraction);
+  // Judge the last completed day only, and only against real calendar neighbours.
+  const latestRow = complete[complete.length - 1];
+  const byDate = new Map(complete.map((r) => [r.date, r]));
+  const prevRow = byDate.get(addDays(latestRow.date, -1)) ?? null;
+  const window: DayStats[] = [];
+  for (let i = 1; i <= 7; i++) {
+    const r = byDate.get(addDays(latestRow.date, -i));
+    if (r) window.push(dayStats(r, resultByDate.get(r.date) ?? 0));
   }
-  if (latestIdx < 1) return null;
-  if (rows[latestIdx].date !== today) label = 'yesterday';
-  const latestRow = rows[latestIdx];
-  const latestRaw = dayStats(latestRow, resultByDate.get(latestRow.date) ?? 0);
-  const latest = dayStats(latestRow, resultByDate.get(latestRow.date) ?? 0, scale);
-  const prevRow = rows[latestIdx - 1];
-  const prev = dayStats(prevRow, resultByDate.get(prevRow.date) ?? 0);
-  const window = rows.slice(Math.max(0, latestIdx - 7), latestIdx).map((r) => dayStats(r, resultByDate.get(r.date) ?? 0));
   const base7 = window.length >= 3 ? avg(window) : null;
+  if (!prevRow && !base7) return null;
 
-  return { resultByDate, resultLabel, costLabel, label, latestRow, latestRaw, latest, prev, base7 };
+  const latest = dayStats(latestRow, resultByDate.get(latestRow.date) ?? 0);
+  const prev = prevRow ? dayStats(prevRow, resultByDate.get(prevRow.date) ?? 0) : null;
+  const todayRow = rows.find((r) => r.date === today) ?? null;
+  return { resultByDate, resultLabel, costLabel, label: 'yesterday', latestRow, latestRaw: latest, latest, prev, base7, todayRow, dayFraction: params.dayFraction };
 }
 
 /** Compact day-over-day numbers for the AI coach status line. */
@@ -142,17 +147,21 @@ export function dayOverDay(params: {
   const cpr = (d: DayStats) => (d.results > 0 ? d.spend / d.results : null);
   const ctr = (d: DayStats) => (d.impressions > 0 ? d.clicks / d.impressions : null);
   const ch = (a: number | null, b: number | null) => (a === null || b === null ? null : r1(pct(a, b)));
+  const prevD = p.prev ?? { impressions: 0, reach: 0, clicks: 0, spend: 0, results: 0 };
   const hasResults = p.resultByDate.size > 0;
   return {
     campaign: params.campaign.name,
-    comparing: p.label === 'today' ? 'today so far (pace-adjusted) vs yesterday' : 'yesterday vs the day before',
+    comparing: `${formatDay(p.latestRow.date)} vs the day before`,
+    day: p.latestRow.date,
     result_label: hasResults ? p.resultLabel : null,
-    pct_change_vs_previous_day: {
-      results: hasResults ? ch(p.latest.results, p.prev.results) : null,
-      reach: ch(p.latest.reach, p.prev.reach),
-      cost_per_result: hasResults ? ch(cpr(p.latest), cpr(p.prev)) : null,
-      ctr: ch(ctr(p.latestRaw), ctr(p.prev)),
-    },
+    pct_change_vs_previous_day: p.prev
+      ? {
+          results: hasResults ? ch(p.latest.results, prevD.results) : null,
+          reach: ch(p.latest.reach, prevD.reach),
+          cost_per_result: hasResults ? ch(cpr(p.latest), cpr(prevD)) : null,
+          ctr: ch(ctr(p.latestRaw), ctr(prevD)),
+        }
+      : { results: null, reach: null, cost_per_result: null, ctr: null },
     pct_change_vs_7day_avg: p.base7
       ? {
           results: hasResults ? ch(p.latest.results, p.base7.results) : null,
@@ -181,21 +190,23 @@ export function buildPerformanceInsights(params: {
 
   const prep = prepareDays(params);
   if (!prep) return [];
-  const { resultByDate, resultLabel, costLabel, label, latestRow, latestRaw, latest, prev, base7 } = prep;
-  if (latestRaw.impressions < MIN_IMPRESSIONS / 2 || (prev.impressions < MIN_IMPRESSIONS && !base7)) return [];
+  const { resultByDate, resultLabel, costLabel, latestRow, latestRaw, latest, base7, todayRow, dayFraction } = prep;
+  const prev: DayStats | null = prep.prev && prep.prev.impressions >= MIN_IMPRESSIONS ? prep.prev : null;
+  if (latestRaw.impressions < MIN_IMPRESSIONS || (!prev && !base7)) return [];
 
   const name = campaign.name;
-  const when = label === 'today' ? 'now' : 'yesterday';
-  const vsY = label === 'today' ? 'vs yesterday' : 'vs the day before';
-  const fixVs = (vs: string) => (vs === 'vs yesterday' ? vsY : vs);
-  const money = (v: number) => `${currency ? `${currency} ` : '$'}${v.toFixed(2)}`;
+  const dayTxt = formatDay(latestRow.date);
+  const when = `on ${dayTxt}`;
+  const fixVs = (vs: string) => (vs === 'vs yesterday' ? 'vs the day before' : vs);
+  const money = (v: number) => formatMoney(v, currency);
   const out: PerformanceEvent[] = [];
+  const prevResults = prev?.results ?? null;
 
   // 1. Results pace (headline: "running well" / "slowing down")
-  const hasResults = resultByDate.size > 0 && (prev.results > 0 || (base7?.results ?? 0) > 0);
+  const hasResults = resultByDate.size > 0 && ((prevResults ?? 0) > 0 || (base7?.results ?? 0) > 0);
   let resultsChange: number | null = null;
   if (hasResults) {
-    const b = pickBaseline(latest.results, prev.results, base7?.results ?? null);
+    const b = pickBaseline(latest.results, prevResults, base7?.results ?? null);
     if (b) {
       resultsChange = b.change;
       const up = b.change > 0;
@@ -206,8 +217,8 @@ export function buildPerformanceInsights(params: {
         title: up
           ? `${name} is running well ${when}: ${resultLabel} up ${fmtPct(b.change)} ${fixVs(b.vs)}`
           : `${name} is slowing down ${when}: ${resultLabel} down ${fmtPct(b.change)} ${fixVs(b.vs)}`,
-        body: label === 'today' ? `${Math.round(latestRaw.results)} ${resultLabel} so far today.` : `${Math.round(latestRaw.results)} ${resultLabel} yesterday.`,
-        metadata: { metric: 'results', change: b.change, vs: b.vs, latest: latest.results, previous: prev.results, avg7: base7?.results ?? null, day: latestRow.date },
+        body: `${Math.round(latestRaw.results)} ${resultLabel} on ${dayTxt}${prevResults !== null ? ` (${Math.round(prevResults)} the day before)` : ''}.`,
+        metadata: { metric: 'results', change: b.change, vs: b.vs, latest: latest.results, previous: prevResults, avg7: base7?.results ?? null, day: latestRow.date },
         weight: 100 + mag(b.change),
       });
     }
@@ -216,7 +227,7 @@ export function buildPerformanceInsights(params: {
   // 2. Cost per result (lower is better)
   if (hasResults && latest.results > 0) {
     const cpr = latest.spend / latest.results;
-    const cprPrev = prev.results > 0 ? prev.spend / prev.results : null;
+    const cprPrev = prev && prev.results > 0 ? prev.spend / prev.results : null;
     const cpr7 = base7 && base7.results > 0 ? base7.spend / base7.results : null;
     const b = pickBaseline(cpr, cprPrev, cpr7);
     if (b) {
@@ -227,9 +238,9 @@ export function buildPerformanceInsights(params: {
         severity: cheaper ? 'success' : 'warning',
         kind: cheaper ? 'cpr_down' : 'cpr_up',
         title: cheaper
-          ? `${costLabel} is down ${fmtPct(b.change)} ${fixVs(b.vs)} on ${name}`
-          : `${costLabel} is up ${fmtPct(b.change)} ${fixVs(b.vs)} on ${name}`,
-        body: `Now ${money(cpr)} per ${per}.`,
+          ? `${name}: ${costLabel.toLowerCase()} down ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`
+          : `${name}: ${costLabel.toLowerCase()} up ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`,
+        body: `${money(cpr)} per ${per} on ${dayTxt}${cprPrev !== null ? ` (${money(cprPrev)} the day before)` : ''}.`,
         metadata: { metric: 'cost_per_result', change: b.change, vs: b.vs, latest: cpr, previous: cprPrev, avg7: cpr7, day: latestRow.date },
         weight: 90 + mag(b.change),
       });
@@ -237,10 +248,10 @@ export function buildPerformanceInsights(params: {
   }
 
   // 3. Reach (fallback to impressions when reach is missing)
-  const useReach = latest.reach > 0 && (prev.reach > 0 || (base7?.reach ?? 0) > 0);
+  const useReach = latest.reach > 0 && ((prev?.reach ?? 0) > 0 || (base7?.reach ?? 0) > 0);
   const vol = useReach ? 'reach' : 'impressions';
   {
-    const b = pickBaseline(latest[vol], prev[vol], base7 ? base7[vol] : null);
+    const b = pickBaseline(latest[vol], prev ? prev[vol] : null, base7 ? base7[vol] : null);
     if (b) {
       const up = b.change > 0;
       const Word = useReach ? 'Reach' : 'Impressions';
@@ -249,9 +260,9 @@ export function buildPerformanceInsights(params: {
         // Fewer people reached is only worth a warning if results did not improve.
         severity: up ? 'success' : resultsChange !== null && resultsChange > 0 ? 'info' : 'warning',
         kind: up ? `${vol}_up` : `${vol}_down`,
-        title: `${Word} is ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${fixVs(b.vs)} on ${name}`,
-        body: up ? 'More people are seeing your ads.' : 'Fewer people are seeing your ads right now.',
-        metadata: { metric: vol, change: b.change, vs: b.vs, latest: latest[vol], previous: prev[vol], avg7: base7 ? base7[vol] : null, day: latestRow.date },
+        title: `${name}: ${Word.toLowerCase()} ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`,
+        body: `${Math.round(latest[vol]).toLocaleString('en-US')} ${vol === 'reach' ? 'people reached' : 'impressions'} on ${dayTxt}${prev ? ` (${Math.round(prev[vol]).toLocaleString('en-US')} the day before)` : ''}.`,
+        metadata: { metric: vol, change: b.change, vs: b.vs, latest: latest[vol], previous: prev ? prev[vol] : null, avg7: base7 ? base7[vol] : null, day: latestRow.date },
         weight: 70 + mag(b.change),
       });
     }
@@ -260,7 +271,7 @@ export function buildPerformanceInsights(params: {
   // 4. CTR (ratio: not pace-adjusted)
   if (latestRaw.impressions >= MIN_IMPRESSIONS) {
     const ctr = latestRaw.clicks / latestRaw.impressions;
-    const ctrPrev = prev.impressions > 0 ? prev.clicks / prev.impressions : null;
+    const ctrPrev = prev && prev.impressions > 0 ? prev.clicks / prev.impressions : null;
     const ctr7 = base7 && base7.impressions > 0 ? base7.clicks / base7.impressions : null;
     const b = pickBaseline(ctr, ctrPrev, ctr7);
     if (b) {
@@ -269,8 +280,8 @@ export function buildPerformanceInsights(params: {
         type: up ? 'performance_up' : 'performance_down',
         severity: up ? 'success' : 'info',
         kind: up ? 'ctr_up' : 'ctr_down',
-        title: `Click-through rate is ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${fixVs(b.vs)} on ${name}`,
-        body: `CTR is ${(ctr * 100).toFixed(2)}%.`,
+        title: `${name}: click-through rate ${up ? 'up' : 'down'} ${fmtPct(b.change)} ${when} ${fixVs(b.vs)}`,
+        body: `CTR ${(ctr * 100).toFixed(2)}% on ${dayTxt}${ctrPrev !== null ? ` (${(ctrPrev * 100).toFixed(2)}% the day before)` : ''}.`,
         metadata: { metric: 'ctr', change: b.change, vs: b.vs, latest: ctr, previous: ctrPrev, avg7: ctr7, day: latestRow.date },
         weight: 50 + mag(b.change),
       });
@@ -285,7 +296,7 @@ export function buildPerformanceInsights(params: {
         type: 'fatigue_warning',
         severity: 'warning',
         kind: 'fatigue',
-        title: `People are seeing ${name} ads often (${freq.toFixed(1)}x)`,
+        title: `${name}: people saw the ads ${freq.toFixed(1)}x each ${when}`,
         body: 'High frequency can cause ad fatigue. Fresh creative may help.',
         metadata: { metric: 'frequency', latest: freq, threshold: FREQUENCY_FATIGUE, day: latestRow.date },
         weight: 140,
@@ -294,9 +305,10 @@ export function buildPerformanceInsights(params: {
   }
 
   // 6. Spend pacing vs the daily budget
+  // (Pacing is the one check that looks at today: projected spend vs the daily budget, after half the day.)
   const daily = n(campaign.daily_budget);
-  if (daily > 0 && label === 'today') {
-    const projected = latest.spend; // pace-adjusted to a full day
+  if (daily > 0 && todayRow && dayFraction >= MIN_PACE_FRACTION) {
+    const projected = n(todayRow.spend) / Math.min(1, dayFraction);
     const ratio = projected / daily;
     if (ratio < 0.6 || ratio > 1.15) {
       const under = ratio < 0.6;
@@ -308,7 +320,7 @@ export function buildPerformanceInsights(params: {
           ? `${name} is spending slower than usual today`
           : `${name} is spending faster than its daily budget`,
         body: `On pace for ${money(projected)} of a ${money(daily)} daily budget.`,
-        metadata: { metric: 'spend_pacing', projected, daily_budget: daily, ratio, day: latestRow.date },
+        metadata: { metric: 'spend_pacing', projected, daily_budget: daily, ratio, day: todayRow.date },
         weight: under ? 40 : 80,
       });
     }
@@ -354,7 +366,7 @@ export function coachLine(items: DayOverDay[]): string | null {
     .filter((x) => x.good.length + x.bad.length > 0);
   if (scored.length === 0) return null;
   const top = scored.sort((a, b) => b.good.length + b.bad.length - (a.good.length + a.bad.length))[0];
-  const vs = top.d.comparing.startsWith('today') ? 'vs yesterday' : 'vs the day before';
+  const vs = `on ${formatDay(top.d.day)} vs the day before`;
   const who = items.length > 1 ? top.d.campaign : 'Campaign';
   const mood = top.score > 0 ? 'is doing well' : top.score < 0 ? 'needs attention' : 'is steady';
   const parts = [...top.good.slice(0, 2), ...top.bad.slice(0, 2)];

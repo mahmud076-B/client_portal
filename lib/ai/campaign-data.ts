@@ -156,24 +156,43 @@ export async function getRecentEvents(
   opts: { campaignId?: string; campaignIds?: string[]; clientId?: string; limit?: number; sinceHours?: number } = {}
 ) {
   if (opts.campaignIds && opts.campaignIds.length === 0) return { events: [] };
-  let q = scope.supabase
-    .from('campaign_events')
-    .select('id, campaign_id, event_type, severity, title, body, metadata, occurred_at, campaigns(name)')
-    .order('occurred_at', { ascending: false })
-    .limit(Math.min(Math.max(opts.limit ?? 20, 1), 50));
-  if (opts.campaignId) q = q.eq('campaign_id', opts.campaignId);
-  if (opts.campaignIds) q = q.in('campaign_id', opts.campaignIds);
-  if (opts.sinceHours) q = q.gte('occurred_at', new Date(Date.now() - opts.sinceHours * 3600_000).toISOString());
+  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+  const build = (columns: string, clientScoped: boolean) => {
+    let q = scope.supabase
+      .from('campaign_events')
+      .select(columns)
+      .order('occurred_at', { ascending: false })
+      // Admins can see one row per assigned client: over-fetch, then collapse by event_key.
+      .limit(isAdmin(scope.profile) ? limit * 3 : limit);
+    // Server-side scoping (RLS enforces the same; this keeps queries index-backed and explicit).
+    if (clientScoped && !isAdmin(scope.profile) && scope.profile.client_id) q = q.eq('client_id', scope.profile.client_id);
+    if (opts.campaignId) q = q.eq('campaign_id', opts.campaignId);
+    if (opts.campaignIds) q = q.in('campaign_id', opts.campaignIds);
+    if (opts.sinceHours) q = q.gte('occurred_at', new Date(Date.now() - opts.sinceHours * 3600_000).toISOString());
+    return q;
+  };
   if (opts.clientId && isAdmin(scope.profile)) {
     const ids = await campaignIdsForClient(scope, opts.clientId);
     if (ids.length === 0) return { events: [] };
-    q = q.in('campaign_id', ids);
+    opts = { ...opts, campaignIds: opts.campaignIds ? opts.campaignIds.filter((id) => ids.includes(id)) : ids };
+    if (opts.campaignIds!.length === 0) return { events: [] };
   }
-  const { data, error } = await q;
+  let { data, error } = await build('id, campaign_id, client_id, event_key, event_type, severity, title, body, metadata, occurred_at, campaigns(name)', true);
+  if (error && /client_id|event_key/.test(error.message)) {
+    // Migration 20261126000000 not applied yet: legacy columns only.
+    ({ data, error } = await build('id, campaign_id, event_type, severity, title, body, metadata, occurred_at, campaigns(name)', false));
+  }
   if (error) {
     // 42P01 / PGRST205: table not created yet (migration pending).
     return { events: [], unavailable: true, error: error.message };
   }
+  const seen = new Set<string>();
+  data = ((data || []) as any[]).filter((e) => {
+    const k = e.event_key ?? e.id;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, limit);
   return {
     events: (data || []).map((e: any) => ({
       id: e.id,
