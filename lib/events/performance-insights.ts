@@ -43,7 +43,7 @@ export const CHANGE_THRESHOLD = 0.2;   // ±20%
 export const FREQUENCY_FATIGUE = 3;    // avg impressions per person per day
 export const MAX_EVENTS_PER_DAY = 3;
 const MIN_IMPRESSIONS = 300;           // ignore noise on tiny days
-const MIN_PACE_FRACTION = 0.25;        // need ≥ 6h of "today" before judging it
+const MIN_PACE_FRACTION = 0.5;         // need ≥ 12h of "today" (Meta reporting lags) before judging it
 
 const n = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0);
 const pct = (a: number, b: number) => (b > 0 ? (a - b) / b : null);

@@ -9,19 +9,7 @@ import Chart from 'chart.js/auto';
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
 import LiveUpdates from '@/components/events/LiveUpdates';
-
-/** Greeting by hour: morning 5–11:59, noon 12–13:59, afternoon 14–16:59, evening 17–20:59, night 21–4:59. */
-function greetingForHour(hour: number): string {
-  if (hour >= 5 && hour < 12) return 'Good morning';
-  if (hour >= 12 && hour < 14) return 'Good noon';
-  if (hour >= 14 && hour < 17) return 'Good afternoon';
-  if (hour >= 17 && hour < 21) return 'Good evening';
-  return 'Good night';
-}
-
-function dhakaHour(date: Date): number {
-  return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dhaka' }).format(date)) % 24;
-}
+import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
 
 /**
  * Server render uses Asia/Dhaka; after mount it switches to the viewer's own clock and refreshes every minute.
@@ -320,7 +308,7 @@ export default function DashboardClient({
           <h1 className="dash-greeting" suppressHydrationWarning>
             {`${greeting}, ${firstName}.`}
           </h1>
-          <p className="dash-sub">Here's how your campaign is performing right now.</p>
+          <p className="dash-sub">Here&apos;s how your campaign is performing right now.</p>
         </div>
         <div>
           <StatusBadge status={delivery} />

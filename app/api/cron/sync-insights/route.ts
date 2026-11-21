@@ -214,6 +214,18 @@ export async function GET(request: Request) {
                             }
                             const optimizationGoal = [...goalCounts.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
 
+                            // Most campaigns are scheduled at the AD SET level (campaign stop_time stays null),
+                            // so a finished campaign would otherwise show "Active" forever. If the campaign has no
+                            // stop_time but every non-deleted ad set has an end_time, use the latest one.
+                            let effectiveEndTime: string | null = metaCampaign.end_time;
+                            if (!effectiveEndTime) {
+                                const scheduled = campAdSets.filter((as: any) => !['DELETED', 'ARCHIVED'].includes(String(as.status || '').toUpperCase()));
+                                if (scheduled.length > 0 && scheduled.every((as: any) => !!as.end_time)) {
+                                    const latest = Math.max(...scheduled.map((as: any) => new Date(as.end_time).getTime()));
+                                    if (Number.isFinite(latest)) effectiveEndTime = new Date(latest).toISOString();
+                                }
+                            }
+
                             const campaignUpdate: Record<string, any> = {
                                     status: metaCampaign.status,
                                     effective_status: metaCampaign.effective_status,
@@ -221,7 +233,7 @@ export async function GET(request: Request) {
                                     lifetime_budget: finalLifetimeBudget,
                                     budget_source: budgetSource,
                                     start_time: metaCampaign.start_time,
-                                    end_time: metaCampaign.end_time,
+                                    end_time: effectiveEndTime,
                                     objective: metaCampaign.objective,
                                     buying_type: metaCampaign.buying_type,
                                     updated_at: new Date().toISOString()

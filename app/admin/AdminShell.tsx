@@ -38,15 +38,18 @@ const TITLES: Array<[string, string]> = [
 export default function AdminShell({ profile, children }: { profile: { full_name?: string | null } | null; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || '';
-  const [open, setOpen] = useState(false);
+  // The drawer remembers the path it was opened on, so navigating closes it without a state-sync effect.
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const open = openOn === pathname;
+  const setOpen = (next: boolean | ((v: boolean) => boolean)) =>
+    setOpenOn((typeof next === 'function' ? next(open) : next) ? pathname : null);
   const initials = profile?.full_name ? profile.full_name.substring(0, 2).toUpperCase() : 'AD';
   const title = TITLES.find(([p]) => pathname.startsWith(p))?.[1] ?? 'Admin Portal';
 
-  // Close the drawer on navigation and on Escape; lock body scroll while open.
-  useEffect(() => setOpen(false), [pathname]);
+  // Close the drawer on Escape; lock body scroll while open.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpenOn(null);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKey);

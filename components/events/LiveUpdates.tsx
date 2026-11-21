@@ -81,6 +81,8 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
   }, [scope, campaignId]);
 
   useEffect(() => {
+    // Initial fetch; state is only set after the network round-trip.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     const poll = setInterval(load, POLL_MS);
     const tick = setInterval(() => setNow(Date.now()), 30_000);

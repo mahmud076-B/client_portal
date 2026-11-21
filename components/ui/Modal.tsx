@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -8,6 +8,8 @@ import { createPortal } from 'react-dom';
  * backdrop-filter and reveal transforms, both of which would otherwise trap a
  * position:fixed overlay inside the card.
  */
+const noopSubscribe = () => () => {};
+
 export default function Modal({
   onClose,
   labelledBy,
@@ -19,8 +21,8 @@ export default function Modal({
   maxWidth?: number;
   children: ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // false during SSR/hydration, true on the client: portal only after mount.
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);

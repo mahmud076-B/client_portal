@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
+import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
 import { GlassLinkCard, KpiCard, PageHeader, ButtonLink } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -7,12 +8,7 @@ export const dynamic = 'force-dynamic';
 const nf = new Intl.NumberFormat('en-US');
 
 function greeting(date = new Date()) {
-  // Asia/Dhaka is the agency's home timezone.
-  const h = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Dhaka' }).format(date)) % 24;
-  if (h >= 5 && h < 12) return 'Good morning';
-  if (h >= 12 && h < 17) return 'Good afternoon';
-  if (h >= 17 && h < 21) return 'Good evening';
-  return 'Good night';
+  return greetingForHour(dhakaHour(date));
 }
 
 async function loadCounts(organizationId: string | null) {
