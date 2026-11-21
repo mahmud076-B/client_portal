@@ -16,7 +16,7 @@ const C_CHADER = 'b5b09c8a-a5c1-4489-8003-2c2aa13dc100';
 
 const snap = (over: Partial<CampaignSnapshot> & { id: string }): CampaignSnapshot => ({
   name: 'Velora Glow Ad (21$)', objective: 'OUTCOME_ENGAGEMENT', effective_status: 'ACTIVE',
-  derived_status: 'ACTIVE', lifetime_budget: null, totals: {}, result: null, days: 3, ...over,
+  derived_status: 'ACTIVE', lifetime_budget: null, end_time: null, totals: {}, result: null, days: 3, ...over,
 });
 const map = (...s: CampaignSnapshot[]): AccountSnapshot => new Map(s.map((x) => [x.id, x]));
 const at = new Date('2026-11-21T20:00:00Z');
@@ -62,6 +62,28 @@ describe('event generation is per campaign', () => {
     const before = map(snap({ id: VELORA, result: msgs(1) }));
     const after = map(snap({ id: VELORA, result: msgs(4) }));
     expect(diffSnapshots({ before, after, currency: 'USD', syncedAt: at })).toEqual(diffSnapshots({ before, after, currency: 'USD', syncedAt: at }));
+  });
+});
+
+describe('status events are news, not catch-up', () => {
+  // Production 2026-11-21 20:01 UTC: the first successful metadata refresh after the
+  // outage turned 15 long-finished campaigns into "is now archived" / "has completed".
+  it('archiving and completions that happened days ago produce no events', () => {
+    const before = map(
+      snap({ id: 'a', name: 'Mr Hossain Ad 3', derived_status: 'COMPLETED' }),
+      snap({ id: 'b', name: 'Green Investment Ad', derived_status: 'ACTIVE', end_time: '2026-11-10T18:00:00Z' }),
+    );
+    const after = map(
+      snap({ id: 'a', name: 'Mr Hossain Ad 3', derived_status: 'ARCHIVED' }),
+      snap({ id: 'b', name: 'Green Investment Ad', derived_status: 'COMPLETED', end_time: '2026-11-10T18:00:00Z' }),
+    );
+    expect(diffSnapshots({ before, after, currency: 'USD', syncedAt: at })).toEqual([]);
+  });
+  it('a campaign that ended within 48h is announced once', () => {
+    const before = map(snap({ id: VELORA, end_time: '2026-11-21T18:00:00Z' }));
+    const after = map(snap({ id: VELORA, derived_status: 'COMPLETED', end_time: '2026-11-21T18:00:00Z', totals: { spend: 18.47 } }));
+    const [e] = diffSnapshots({ before, after, currency: 'USD', syncedAt: at });
+    expect(e).toMatchObject({ event_type: 'campaign_completed', title: 'Velora Glow Ad (21$) has completed', body: 'Final spend $18.47.', event_key: `${VELORA}:completed` });
   });
 });
 

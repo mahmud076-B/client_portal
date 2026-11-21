@@ -16,8 +16,11 @@
 --       4710a9bf-...  performance_up "post engagements up 28%"          (wrong result type)
 --       8e7b4b50-...  performance_up "Cost per engagement ... USD 0.00"  (wrong result type)
 --       7ab7bfe2-...  performance_up "Click-through rate is up 23%"     (compared to a gap day)
---     Syncs that run before this migration (old code) add more client-less rows; they are
---     removed by the same statement. Nothing else is deleted. The next sync after the
+--     The 2026-11-21 20:01 UTC sync (code a480f68, first successful metadata refresh)
+--     added 18 more client-less rows: 15 status "catch-up" rows for campaigns that had
+--     long finished ("is now archived", "has completed"), 1 new_results and 2 performance
+--     rows for Velora. Total at 02:02 Dhaka: 22. Any further client-less rows written by
+--     the old code before this migration runs are removed by the same statement. Nothing else is deleted. The next sync after the
 --     deploy regenerates correct, attributed events.
 --  3. Indexes for the feed: (client_id, campaign_id, occurred_at DESC).
 --  4. RLS: every read policy on campaign_events, campaign_insights, campaigns,

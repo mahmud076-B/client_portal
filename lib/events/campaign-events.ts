@@ -23,6 +23,8 @@ export interface CampaignSnapshot {
   effective_status: string | null;
   derived_status: DerivedStatus;
   lifetime_budget: number | null;
+  /** ISO end time (campaign or ad sets), used to tell a real completion from a status catch-up. */
+  end_time: string | null;
   totals: MetricTotals;
   /** The campaign's own result (resolved from objective/goal + its data), e.g. messaging conversations. */
   result: { label: string; total: number } | null;
@@ -138,6 +140,7 @@ export async function snapshotAccountCampaigns(
         effective_status: c.effective_status ?? c.status ?? null,
         derived_status: deriveDeliveryStatus(c).code,
         lifetime_budget: c.lifetime_budget != null ? Number(c.lifetime_budget) : null,
+        end_time: c.end_time ?? null,
         totals: sumInsights(rows),
         result: campaignResult(c, rows as unknown as InsightRow[]),
         days: rows.length,
@@ -176,6 +179,9 @@ export function spendSteps(max: number): number[] {
 
 const fmt = (n: number, currency: string | null) => formatMoney(n, currency);
 
+/** A completion is news only if the campaign ended within this window. */
+export const STATUS_NEWS_WINDOW_MS = 48 * 3600_000;
+
 /**
  * Pure per-campaign diff (exported for testing). Each event is built only from
  * `before.get(id)` / `after.get(id)` of the SAME campaign id.
@@ -195,8 +201,12 @@ export function diffSnapshots(params: {
     const prev = before.get(id);
     if (!prev) continue; // newly discovered campaigns are not "updates"
 
-    // 1. Status / completion
-    if (prev.derived_status !== now.derived_status) {
+    // 1. Status / completion: only news about the present. Archiving/deleting is
+    //    housekeeping, and a campaign that ended days ago is a catch-up (e.g. the first
+    //    successful metadata refresh after an outage), not "has completed" today.
+    const endedLongAgo = now.end_time != null && Date.parse(now.end_time) < syncedAt.getTime() - STATUS_NEWS_WINDOW_MS;
+    const housekeeping = now.derived_status === 'ARCHIVED' || now.derived_status === 'DELETED';
+    if (prev.derived_status !== now.derived_status && !housekeeping && !(now.derived_status === 'COMPLETED' && endedLongAgo)) {
       if (now.derived_status === 'COMPLETED') {
         events.push({
           campaign_id: id,
