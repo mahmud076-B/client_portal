@@ -471,6 +471,7 @@ export async function GET(request: Request) {
                             adAccountId: adAccount.id,
                             before: eventsBefore,
                             currency: adAccount.currency ?? null,
+                            timezone: adAccount.timezone_name ?? null,
                         });
                         if (eventsWritten > 0) {
                             syncResults.push({ account: adAccount.meta_ad_account_id, type: 'campaign_events', events: eventsWritten });

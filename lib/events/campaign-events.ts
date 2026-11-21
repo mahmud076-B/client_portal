@@ -2,6 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { metricLabel, resultColumns, sumInsights, type MetricTotals } from '@/lib/campaigns/metrics';
 import { deriveDeliveryStatus, type DerivedStatus } from '@/lib/meta/results';
+import { buildPerformanceInsights, localDay, type InsightDayRow, type InsightEventType } from '@/lib/events/performance-insights';
 
 /**
  * Live-updates event generation.
@@ -29,7 +30,8 @@ export type CampaignEventType =
   | 'campaign_completed'
   | 'new_results'
   | 'spend_milestone'
-  | 'budget_milestone';
+  | 'budget_milestone'
+  | InsightEventType;
 
 export interface CampaignEventInsert {
   organization_id: string;
@@ -228,6 +230,69 @@ export function diffSnapshots(params: {
   return events;
 }
 
+/**
+ * Daily performance commentary ("running well now", "reach is down 25% vs
+ * yesterday"). Deduped per campaign, per insight kind, per ad-account day.
+ */
+export async function buildAccountPerformanceEvents(
+  supabase: SupabaseClient,
+  params: { organizationId: string; adAccountId: string; currency?: string | null; timezone?: string | null; now?: Date }
+): Promise<CampaignEventInsert[]> {
+  const now = params.now ?? new Date();
+  let tz = params.timezone || 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); } catch { tz = 'UTC'; }
+  const { today, dayFraction } = localDay(tz, now);
+
+  const { data: campaigns, error } = await supabase
+    .from('campaigns')
+    .select('id, name, objective, optimization_goal, status, effective_status, start_time, end_time, daily_budget, lifetime_budget')
+    .eq('ad_account_id', params.adAccountId);
+  if (error) throw error;
+  const live = (campaigns || []).filter((c) => deriveDeliveryStatus(c, now).isLive);
+  if (live.length === 0) return [];
+
+  const since = new Date(Date.parse(`${today}T00:00:00Z`) - 9 * 86400_000).toISOString().slice(0, 10);
+  const rowsByCampaign = new Map<string, InsightDayRow[]>();
+  for (let from = 0; ; from += PAGE) {
+    const { data: rows, error: insErr } = await supabase
+      .from('campaign_insights')
+      .select('campaign_id, date, impressions, reach, clicks, spend, actions, action_values, video_thruplays')
+      .in('campaign_id', live.map((c) => c.id))
+      .gte('date', since)
+      .order('date', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (insErr) throw insErr;
+    for (const row of rows || []) {
+      const list = rowsByCampaign.get(row.campaign_id) ?? [];
+      list.push(row as InsightDayRow);
+      rowsByCampaign.set(row.campaign_id, list);
+    }
+    if (!rows || rows.length < PAGE) break;
+  }
+
+  const occurred_at = now.toISOString();
+  const out: CampaignEventInsert[] = [];
+  for (const c of live) {
+    const insights = buildPerformanceInsights({
+      campaign: c, rows: rowsByCampaign.get(c.id) ?? [], today, dayFraction, currency: params.currency ?? null, now,
+    });
+    for (const e of insights) {
+      out.push({
+        organization_id: params.organizationId,
+        campaign_id: c.id,
+        event_type: e.type,
+        severity: e.severity,
+        title: e.title,
+        body: e.body,
+        metadata: { ...e.metadata, kind: e.kind, source: 'performance_insight' },
+        dedupe_key: `${c.id}:perf:${e.kind}:${today}`,
+        occurred_at,
+      });
+    }
+  }
+  return out;
+}
+
 export async function recordCampaignEvents(
   supabase: SupabaseClient,
   params: {
@@ -235,30 +300,48 @@ export async function recordCampaignEvents(
     adAccountId: string;
     before: AccountSnapshot | null;
     currency?: string | null;
+    timezone?: string | null;
   }
 ): Promise<number> {
+  let written = 0;
   try {
-    if (!params.before) return 0;
-    const after = await snapshotAccountCampaigns(supabase, params.adAccountId);
-    if (!after) return 0;
-
-    const events = diffSnapshots({
-      organizationId: params.organizationId,
-      before: params.before,
-      after,
-      currency: params.currency ?? null,
-      syncedAt: new Date(),
-    });
-    if (events.length === 0) return 0;
-
-    const { error } = await supabase
-      .from('campaign_events')
-      .upsert(events, { onConflict: 'dedupe_key', ignoreDuplicates: true });
-    if (error) throw error;
-    return events.length;
+    if (params.before) {
+      const after = await snapshotAccountCampaigns(supabase, params.adAccountId);
+      if (after) {
+        const events = diffSnapshots({
+          organizationId: params.organizationId,
+          before: params.before,
+          after,
+          currency: params.currency ?? null,
+          syncedAt: new Date(),
+        });
+        if (events.length > 0) {
+          const { error } = await supabase
+            .from('campaign_events')
+            .upsert(events, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+          if (error) throw error;
+          written += events.length;
+        }
+      }
+    }
   } catch (err: any) {
     // e.g. migration not applied yet: never fail the sync because of the feed.
     console.warn(`[CampaignEvents] record failed for ad_account=${params.adAccountId}: ${err?.message || err}`);
-    return 0;
   }
+
+  // Performance commentary is written separately so a missing CHECK-constraint
+  // migration (new event types) can never block the core status/results events.
+  try {
+    const perf = await buildAccountPerformanceEvents(supabase, params);
+    if (perf.length > 0) {
+      const { error } = await supabase
+        .from('campaign_events')
+        .upsert(perf, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+      if (error) throw error;
+      written += perf.length;
+    }
+  } catch (err: any) {
+    console.warn(`[CampaignEvents] performance insights failed for ad_account=${params.adAccountId}: ${err?.message || err}`);
+  }
+  return written;
 }

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { UserProfile } from '@/lib/supabase/auth';
 import { deriveRatios, sumInsights } from '@/lib/campaigns/metrics';
 import { deriveDeliveryStatus, objectiveLabel } from '@/lib/meta/results';
+import { dayOverDay, localDay, type InsightDayRow } from '@/lib/events/performance-insights';
 
 /**
  * Data access for the AI assistant and the Live Updates feed.
@@ -181,6 +182,36 @@ export async function getRecentEvents(
       occurred_at: e.occurred_at,
     })),
   };
+}
+
+/**
+ * Day-over-day performance numbers for the visible live campaigns (RLS-scoped),
+ * used by the AI coach status line.
+ */
+export async function getPerformanceSnapshot(scope: Scope, opts: { limit?: number } = {}) {
+  const { data: campaigns } = await scope.supabase
+    .from('campaigns')
+    .select('id, name, objective, optimization_goal, status, effective_status, start_time, end_time, daily_budget, lifetime_budget, ad_account_id');
+  const live = (campaigns || []).filter((c) => deriveDeliveryStatus(c).isLive).slice(0, opts.limit ?? 8);
+  if (live.length === 0) return [];
+  const meta = await accountMeta([...new Set(live.map((c) => c.ad_account_id as string))]);
+  const since = new Date(Date.now() - 10 * 86400_000).toISOString().slice(0, 10);
+  const { data: rows } = await scope.supabase
+    .from('campaign_insights')
+    .select('campaign_id, date, impressions, reach, clicks, spend, actions, action_values, video_thruplays')
+    .in('campaign_id', live.map((c) => c.id))
+    .gte('date', since)
+    .order('date', { ascending: true })
+    .limit(1000);
+  const out = [];
+  for (const c of live) {
+    let tz = meta.get(c.ad_account_id)?.timezone_name || 'UTC';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); } catch { tz = 'UTC'; }
+    const { today, dayFraction } = localDay(tz);
+    const d = dayOverDay({ campaign: c, rows: (rows || []).filter((r) => r.campaign_id === c.id) as InsightDayRow[], today, dayFraction });
+    if (d) out.push(d);
+  }
+  return out;
 }
 
 /** Latest successful sync across the ad accounts behind the visible campaigns. */

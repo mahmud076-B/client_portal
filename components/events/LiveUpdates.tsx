@@ -8,7 +8,9 @@ interface FeedEvent {
   id: string;
   campaign_id: string;
   campaign_name: string | null;
-  type: 'status_changed' | 'campaign_completed' | 'new_results' | 'spend_milestone' | 'budget_milestone';
+  type:
+    | 'status_changed' | 'campaign_completed' | 'new_results' | 'spend_milestone' | 'budget_milestone'
+    | 'performance_up' | 'performance_down' | 'fatigue_warning' | 'pacing';
   severity: 'info' | 'success' | 'warning';
   title: string;
   body: string | null;
@@ -35,6 +37,14 @@ function EventIcon({ type }: { type: FeedEvent['type'] }) {
       return <svg {...common}><polyline points="20 6 9 17 4 12" /></svg>;
     case 'new_results':
       return <svg {...common}><polyline points="3 17 9 11 13 15 21 7" /><polyline points="14 7 21 7 21 14" /></svg>;
+    case 'performance_up':
+      return <svg {...common}><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>;
+    case 'performance_down':
+      return <svg {...common}><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>;
+    case 'fatigue_warning':
+      return <svg {...common}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>;
+    case 'pacing':
+      return <svg {...common}><circle cx="12" cy="13" r="8" /><polyline points="12 9 12 13 14.5 15.5" /><line x1="9" y1="2" x2="15" y2="2" /></svg>;
     case 'spend_milestone':
     case 'budget_milestone':
       return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v10M9.5 9.5h3.5a2 2 0 0 1 0 4h-2a2 2 0 0 0 0 4H15" /></svg>;
@@ -49,6 +59,7 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
   const [summary, setSummary] = useState<string | null>(null);
   const [scope, setScope] = useState<'all' | 'campaign'>('all');
   const [live, setLive] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
@@ -57,9 +68,14 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
       const res = await fetch(`/api/campaign-events${qs}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
-      setEvents(data.events || []);
+      const list: FeedEvent[] = [...(data.events || [])].sort(
+        (a: FeedEvent, b: FeedEvent) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)
+      );
+      setEvents(list);
+      setPolling(true);
       setLastSyncedAt(data.lastSyncedAt ?? null);
     } catch {
+      setPolling(false);
       setEvents((prev) => prev ?? []);
     }
   }, [scope, campaignId]);
@@ -100,8 +116,9 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
     <div className={`${poppins.variable} mk-lu`}>
       <div className="mk-lu-head">
         <div className="mk-lu-title">
-          <span className={`mk-lu-dot ${live ? 'is-live' : ''}`} aria-hidden="true" />
+          <span className={`mk-lu-dot ${live || polling ? 'is-live' : ''}`} aria-hidden="true" />
           Live updates
+          {(live || polling) && <span className="mk-lu-livepill">LIVE</span>}
         </div>
         {campaignId && (
           <div className="mk-lu-toggle" role="tablist" aria-label="Filter updates">
@@ -117,7 +134,7 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
 
       {summary && (
         <div className="mk-lu-summary">
-          <span className="mk-lu-ai">AI</span>
+          <span className="mk-lu-ai">AI coach</span>
           <span>{summary}</span>
         </div>
       )}
@@ -128,12 +145,12 @@ export default function LiveUpdates({ campaignId }: { campaignId?: string | null
         </ul>
       ) : events.length === 0 ? (
         <div className="mk-lu-empty">
-          No updates yet. Status changes, new results, spend milestones and completed campaigns will appear here automatically.
+          No updates yet. Performance changes (reach, cost per result, CTR, pacing), new results, status changes and milestones will appear here automatically.
         </div>
       ) : (
         <ul className="mk-lu-list">
           {events.slice(0, 8).map((e) => (
-            <li key={e.id} className={`mk-lu-item sev-${e.severity}`}>
+            <li key={e.id} className={`mk-lu-item sev-${e.severity}${now - Date.parse(e.occurred_at) < 3600_000 ? ' is-new' : ''}`}>
               <span className="mk-lu-icon"><EventIcon type={e.type} /></span>
               <div className="mk-lu-text">
                 <div className="mk-lu-item-title">{e.title}</div>

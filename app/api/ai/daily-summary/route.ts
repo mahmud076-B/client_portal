@@ -4,38 +4,39 @@ import { createClient } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/supabase/auth';
 import { getOpenAIConfig } from '@/lib/ai/config';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
-import { getRecentEvents, listCampaigns, type Scope } from '@/lib/ai/campaign-data';
+import { getPerformanceSnapshot, getRecentEvents, listCampaigns, type Scope } from '@/lib/ai/campaign-data';
+import { coachLine } from '@/lib/events/performance-insights';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-// Per-instance cache: one summary per user per 3h keeps cost negligible.
+// Per-instance cache: one summary per user per hour keeps cost negligible.
 const cache = new Map<string, { at: number; summary: string | null }>();
-const TTL_MS = 3 * 60 * 60 * 1000;
+const TTL_MS = 60 * 60 * 1000;
 
 export async function GET() {
-  const config = getOpenAIConfig();
-  if (!config) return Response.json({ summary: null, configured: false });
-
   const { user, profile } = await getCurrentProfile();
   if (!user || !profile) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const hit = cache.get(user.id);
-  if (hit && Date.now() - hit.at < TTL_MS) return Response.json({ summary: hit.summary, configured: true, cached: true });
-
-  if (!checkRateLimit(`summary:${user.id}`, [{ limit: 6, windowMs: 24 * 3600_000 }]).ok) {
-    return Response.json({ summary: hit?.summary ?? null, configured: true });
-  }
+  if (hit && Date.now() - hit.at < TTL_MS) return Response.json({ summary: hit.summary, cached: true });
 
   const scope: Scope = { supabase: await createClient(), profile };
-  const [{ events = [] }, campaigns] = await Promise.all([
+  const [{ events = [] }, campaigns, performance] = await Promise.all([
     getRecentEvents(scope, { sinceHours: 24, limit: 40 }),
     listCampaigns(scope),
+    getPerformanceSnapshot(scope).catch(() => []),
   ]);
 
-  if (events.length === 0) {
-    cache.set(user.id, { at: Date.now(), summary: null });
-    return Response.json({ summary: null, configured: true });
+  // Deterministic coach line: always available, also the fallback if OpenAI is off or fails.
+  const fallback = coachLine(performance);
+  const config = getOpenAIConfig();
+  if (!config || (events.length === 0 && performance.length === 0)) {
+    cache.set(user.id, { at: Date.now(), summary: fallback });
+    return Response.json({ summary: fallback, configured: Boolean(config) });
+  }
+  if (!checkRateLimit(`summary:${user.id}`, [{ limit: 24, windowMs: 24 * 3600_000 }]).ok) {
+    return Response.json({ summary: hit?.summary ?? fallback, configured: true });
   }
 
   try {
@@ -43,20 +44,24 @@ export async function GET() {
     const { text } = await generateText({
       model: openai(config.model),
       instructions:
-        'Write ONE short, friendly sentence (max 25 words) summarising the last 24 hours of ad campaign updates for a client. ' +
-        'Use only the facts given. No greetings, no emojis, no advice. English.',
+        'You are a friendly ad-campaign coach. Write ONE short status line (max 22 words) telling the client how their campaign is doing right now. ' +
+        'Start with a verdict ("Campaign is doing well", "Campaign needs attention", "Campaign is steady"), then a colon and the 1-3 most important numbers, ' +
+        'e.g. "Campaign is doing well: results up 18%, but reach down 25% vs yesterday." ' +
+        'Use only the numbers given (percentages are already computed; null = unknown). Prefer day-over-day changes; mention the 7-day average only if clearer. ' +
+        'If several campaigns, name the one that matters most. Simple English that is easy for Bangla speakers. No greetings, no emojis.',
       prompt: JSON.stringify({
         campaigns: 'campaigns' in campaigns ? campaigns.campaigns?.map((c) => ({ name: c.name, status: c.status })) : [],
-        updates_last_24h: events.map((e) => ({ title: e.title, body: e.body, at: e.occurred_at })),
+        performance,
+        updates_last_24h: events.slice(0, 20).map((e) => ({ title: e.title, body: e.body, at: e.occurred_at })),
       }),
       maxOutputTokens: 300,
       providerOptions: { openai: { reasoningEffort: 'low', store: false } },
     });
-    const summary = text.trim() || null;
+    const summary = text.trim() || fallback;
     cache.set(user.id, { at: Date.now(), summary });
     return Response.json({ summary, configured: true });
   } catch (err) {
     console.error('[AI Summary] failed:', err);
-    return Response.json({ summary: null, configured: true });
+    return Response.json({ summary: fallback, configured: true });
   }
 }
