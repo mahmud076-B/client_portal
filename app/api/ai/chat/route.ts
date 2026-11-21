@@ -125,7 +125,8 @@ export async function POST(req: Request) {
       tools,
       stopWhen: isStepCount(6),
       maxOutputTokens: 1200,
-      providerOptions: { openai: { reasoningEffort: 'low', store: false } },
+      // parallelToolCalls: false — the model otherwise emits a pseudo-tool 'parallel' (AI_NoSuchToolError in prod logs).
+      providerOptions: { openai: { reasoningEffort: 'low', store: false, parallelToolCalls: false } },
     });
 
     return createUIMessageStreamResponse({

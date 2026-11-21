@@ -25,6 +25,22 @@ export interface CampaignSnapshot {
 
 export type AccountSnapshot = Map<string, CampaignSnapshot>;
 
+/**
+ * After a historical backfill, take the metric totals from `fresh` but keep the
+ * statuses from `before`. Otherwise days recovered from the past would be announced
+ * as "+597 new results" / spend milestones, while real status changes in the same run
+ * must still be detected. Pure.
+ */
+export function rebaseSnapshotTotals(before: AccountSnapshot, fresh: AccountSnapshot | null): AccountSnapshot {
+  if (!fresh) return before;
+  const out: AccountSnapshot = new Map();
+  for (const [id, b] of before) {
+    const f = fresh.get(id);
+    out.set(id, f ? { ...b, totals: f.totals } : b);
+  }
+  return out;
+}
+
 export type CampaignEventType =
   | 'status_changed'
   | 'campaign_completed'

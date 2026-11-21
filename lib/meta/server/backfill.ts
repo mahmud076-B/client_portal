@@ -7,7 +7,7 @@ export { addDays, dayIn, isIsoDay };
 
 /**
  * Finds the span of days (in the ad account timezone) on which a currently-delivering
- * campaign has NO insights row, within the last `lookbackDays` (excluding D0–D2, which
+ * campaign has NO insights row, within the last `lookbackDays` (default 90; excluding D0–D2, which
  * the regular sync refreshes anyway). Gaps appear whenever syncs stop, e.g. while the
  * Meta token was expired, and make spend/impressions/results lower than Ads Manager.
  *
@@ -18,7 +18,7 @@ export async function findInsightGap(
     params: { adAccountId: string; timeZone: string; lookbackDays?: number; now?: Date }
 ): Promise<{ since: string; until: string } | null> {
     const today = dayIn(params.timeZone, params.now);
-    const windowStart = addDays(today, -(params.lookbackDays ?? 37));
+    const windowStart = addDays(today, -(params.lookbackDays ?? 90));
     const windowEnd = addDays(today, -3);
     if (windowEnd < windowStart) return null;
 

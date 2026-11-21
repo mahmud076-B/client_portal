@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
-import { recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
+import { rebaseSnapshotTotals, recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
 import { findInsightGap, isIsoDay } from '@/lib/meta/server/backfill';
 
 export const dynamic = 'force-dynamic';
@@ -76,13 +76,16 @@ export async function GET(request: Request) {
 
                 let connectionHasTokenError = false;
 
-                for (const adAccount of adAccounts || []) {
-                    if (adAccount.status !== 'active') continue;
+                // Ad accounts are synced in parallel so a slow/broken account cannot push the whole run
+                // past the scheduler's HTTP timeout (which then retries and runs the sync twice).
+                await Promise.all((adAccounts || []).map(async (adAccount: any) => {
+                  try {
+                    if (adAccount.status !== 'active') return;
 
-                    if (connectionHasTokenError) break;
+                    if (connectionHasTokenError) return;
 
                     // Snapshot for the Live Updates feed (never throws).
-                    const eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
+                    let eventsBefore = await snapshotAccountCampaigns(supabase, adAccount.id);
 
                     // ============================================================
                     // STEP A: CAMPAIGN METADATA REFRESH (isolated — never skips insights)
@@ -281,7 +284,7 @@ export async function GET(request: Request) {
                         };
                         console.error(`[MetadataRefresh] Failed for ad_account=${adAccount.meta_ad_account_id}: ${metaRefreshError.message}`);
 
-                        if (connectionHasTokenError) break;
+                        if (connectionHasTokenError) return;
                     }
 
                     syncResults.push({
@@ -291,7 +294,7 @@ export async function GET(request: Request) {
                     });
 
                     // If token error was confirmed in metadata refresh, stop now
-                    if (connectionHasTokenError) break;
+                    if (connectionHasTokenError) return;
 
                     // ============================================================
                     // STEP B: INSIGHTS SYNC (D-1 and D-2) — unchanged behavior
@@ -347,7 +350,8 @@ export async function GET(request: Request) {
                     if (!manualRange && !specificDate) {
                         try {
                             const gap = await findInsightGap(supabase, { adAccountId: adAccount.id, timeZone: tz });
-                            if (gap) targetDates.push(`${gap.since}..${gap.until}`);
+                            // First, so the Live Updates baseline can be rebased right after it (see below).
+                            if (gap) targetDates.unshift(`${gap.since}..${gap.until}`);
                         } catch (gapErr: any) {
                             console.warn(`[Sync] gap check failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
                         }
@@ -388,7 +392,7 @@ export async function GET(request: Request) {
 
                                     retryCount++;
                                     if (retryCount <= maxRetries) {
-                                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retryCount))); // Exponential backoff
+                                        await new Promise(r => setTimeout(r, 500 * Math.pow(2, retryCount))); // Exponential backoff: 1s, 2s, 4s
                                     }
                                 }
                             }
@@ -474,6 +478,11 @@ export async function GET(request: Request) {
 
                             syncResults.push({ account: adAccount.meta_ad_account_id, date: targetDate, status: 'success', records: insightsPayload.length });
 
+                            // Historical backfill: recovered past days are not "new results" for the feed.
+                            if (targetDate.includes('..') && eventsBefore) {
+                                eventsBefore = rebaseSnapshotTotals(eventsBefore, await snapshotAccountCampaigns(supabase, adAccount.id));
+                            }
+
                         } catch (dateError: any) {
                             const metaError = dateError.metaError;
                             if (metaError && metaError.code === 190) {
@@ -509,7 +518,11 @@ export async function GET(request: Request) {
                             syncResults.push({ account: adAccount.meta_ad_account_id, type: 'campaign_events', events: eventsWritten });
                         }
                     }
-                }
+                  } catch (accountErr: any) {
+                    console.error(`[Sync] account ${adAccount.meta_ad_account_id} failed:`, accountErr);
+                    syncResults.push({ account: adAccount.meta_ad_account_id, status: 'failed', error: accountErr?.message || String(accountErr) });
+                  }
+                }));
 
                 if (connectionHasTokenError) {
                     await supabase
