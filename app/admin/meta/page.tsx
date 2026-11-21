@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import AdAccountsManager from './AdAccountsManager';
+import SystemUserTokenForm from './SystemUserTokenForm';
 import './meta-tailwind.css';
 
 export default async function MetaAdminPage() {
@@ -16,6 +17,9 @@ export default async function MetaAdminPage() {
         .select('*')
         .eq('organization_id', profile.organization_id)
         .single();
+
+    const tokenExpired = !!connection?.token_expires_at && new Date(connection.token_expires_at) <= new Date();
+    const isHealthy = !!connection && connection.status === 'connected' && !tokenExpired;
 
     // Fetch already registered Ad Accounts for this organization
     const { data: registeredAccounts } = await supabase
@@ -89,15 +93,22 @@ export default async function MetaAdminPage() {
                                     <h3 className="text-lg font-bold text-gray-900">System Connection</h3>
                                     {connection ? (
                                         <div className="mt-1 flex flex-col sm:flex-row sm:items-center sm:gap-4 gap-1">
-                                            <span className="inline-flex items-center text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
-                                                <span className="h-1.5 w-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
-                                                Active Session
-                                            </span>
+                                            {isHealthy ? (
+                                                <span className="inline-flex items-center text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
+                                                    <span className="h-1.5 w-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
+                                                    Active Session
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center text-sm font-semibold text-red-700 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200">
+                                                    Token expired. Click Reconnect
+                                                </span>
+                                            )}
                                             <span className="text-sm font-medium text-gray-500 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                                 ID: {connection.meta_user_id}
                                             </span>
                                             <span className="text-xs text-gray-400">
                                                 Verified: {new Date(connection.last_validated_at).toLocaleDateString()}
+                                                {connection.token_expires_at && ` · Expires: ${new Date(connection.token_expires_at).toLocaleDateString()}`}
                                             </span>
                                         </div>
                                     ) : (
@@ -128,6 +139,9 @@ export default async function MetaAdminPage() {
                                 )}
                             </div>
                         </div>
+                    </div>
+                    <div className="border-t border-gray-100">
+                        <SystemUserTokenForm />
                     </div>
                 </div>
 

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
             return new NextResponse('Database error', { status: 500 });
         }
 
-        return NextResponse.redirect(new URL('/dashboard/admin/meta', req.url));
+        return NextResponse.redirect(new URL('/admin/meta', req.url));
 
     } catch (error: any) {
         if (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN') {

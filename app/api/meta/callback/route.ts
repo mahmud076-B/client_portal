@@ -16,21 +16,21 @@ export async function GET(req: NextRequest) {
         const error = searchParams.get('error');
 
         if (error) {
-            return NextResponse.redirect(new URL(`/dashboard/admin/meta?error=${error}`, req.url));
+            return NextResponse.redirect(new URL(`/admin/meta?error=${error}`, req.url));
         }
 
         // 2. CSRF Validation
         const cookieStore = await cookies();
         const savedState = cookieStore.get('meta_oauth_state')?.value;
         if (!state || !savedState || state !== savedState) {
-            return NextResponse.redirect(new URL('/dashboard/admin/meta?error=invalid_state', req.url));
+            return NextResponse.redirect(new URL('/admin/meta?error=invalid_state', req.url));
         }
         
         // Clear cookie
         cookieStore.delete('meta_oauth_state');
 
         if (!code) {
-            return NextResponse.redirect(new URL('/dashboard/admin/meta?error=missing_code', req.url));
+            return NextResponse.redirect(new URL('/admin/meta?error=missing_code', req.url));
         }
 
         // 3. Exchange Tokens
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         const redirectUri = `${origin}/api/meta/callback`;
         
         const shortLivedToken = await exchangeCodeForToken(code, redirectUri);
-        const longLivedToken = await getLongLivedToken(shortLivedToken);
+        const { accessToken: longLivedToken, expiresAt } = await getLongLivedToken(shortLivedToken);
         const metaUserId = await getMetaUserId(longLivedToken);
 
         // 4. Encrypt the token safely
@@ -58,24 +58,26 @@ export async function GET(req: NextRequest) {
                 auth_tag: encryptedData.authTag,
                 iv: encryptedData.iv,
                 status: 'connected',
-                last_validated_at: new Date().toISOString()
+                last_validated_at: new Date().toISOString(),
+                token_expires_at: expiresAt,
+                updated_at: new Date().toISOString()
             }, {
                 onConflict: 'organization_id'
             });
 
         if (dbError) {
             console.error('Database Error storing Meta Connection:', dbError);
-            return NextResponse.redirect(new URL('/dashboard/admin/meta?error=database_error', req.url));
+            return NextResponse.redirect(new URL('/admin/meta?error=database_error', req.url));
         }
 
         // 6. Success Redirect
-        return NextResponse.redirect(new URL('/dashboard/admin/meta?success=true', req.url));
+        return NextResponse.redirect(new URL('/admin/meta?success=true', req.url));
 
     } catch (error: any) {
         if (error.message === 'UNAUTHORIZED' || error.message === 'FORBIDDEN') {
             return new NextResponse('Unauthorized', { status: 401 });
         }
         console.error('Meta Callback Error:', error);
-        return NextResponse.redirect(new URL('/dashboard/admin/meta?error=internal_error', req.url));
+        return NextResponse.redirect(new URL('/admin/meta?error=internal_error', req.url));
     }
 }
