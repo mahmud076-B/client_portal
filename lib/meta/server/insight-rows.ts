@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NormalizedCampaignInsight } from './insights';
+import { rowLinkClicks } from '@/lib/campaigns/metrics';
 
 function isMissingColumnError(err: { code?: string; message?: string }): boolean {
     return err.code === 'PGRST204' || err.code === '42703' || /column .* does not exist|Could not find the .* column/i.test(err.message || '');
@@ -13,7 +14,8 @@ export function toInsightRow(insight: NormalizedCampaignInsight, campaignId: str
         date: insight.date,
         impressions: insight.impressions,
         clicks: insight.clicks,
-        inline_link_clicks: insight.inline_link_clicks,
+        // Never NULL when Meta reported link clicks in either form (same number).
+        inline_link_clicks: insight.inline_link_clicks ?? (Array.isArray(insight.actions) ? rowLinkClicks({ actions: insight.actions }) : null),
         spend: insight.spend,
         reach: insight.reach,
         cpc: insight.cpc,

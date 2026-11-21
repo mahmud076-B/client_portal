@@ -32,3 +32,23 @@ export function computeInsightGap(params: {
     }
     return since && until ? { since, until } : null;
 }
+
+/** Days before today that are re-read every run: Meta keeps attributing conversions to past days
+ * (7-day click window), so D-9..D-3 still change and must match Ads Manager. D0–D2 are read separately. */
+export const SETTLE_DAYS_BACK = 9;
+export const RECENT_DAYS = 3;
+
+/**
+ * Pure: the single historical range the cron reads each run, and the day through which every
+ * live campaign is then known to be complete (the backfill marker).
+ * - always covers D-9..D-3 (late attribution, and fields added later such as inline_link_clicks);
+ * - extends back to the start of any gap (days missed while syncs were down).
+ * The marker is the END of the range, not the last missing day, so a day that already had a row
+ * (but stale or missing fields) can never be left behind the marker.
+ */
+export function planHistoricalRange(params: { today: string; gap: { since: string; until: string } | null }) {
+    const until = addDays(params.today, -RECENT_DAYS);
+    const settleStart = addDays(params.today, -SETTLE_DAYS_BACK);
+    const since = params.gap && params.gap.since < settleStart ? params.gap.since : settleStart;
+    return { since, until, markThrough: until };
+}

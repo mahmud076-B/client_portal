@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaInsightsClient } from '@/lib/meta/server/insights';
 import { MetaServerClient } from '@/lib/meta/server/client';
 import { rebaseSnapshotTotals, recordCampaignEvents, snapshotAccountCampaigns } from '@/lib/events/campaign-events';
-import { findInsightGap, isIsoDay, markBackfilled } from '@/lib/meta/server/backfill';
+import { isIsoDay, markBackfilled, planHistoricalSync } from '@/lib/meta/server/backfill';
 import { toInsightRow, upsertInsightRows } from '@/lib/meta/server/insight-rows';
 
 export const dynamic = 'force-dynamic';
@@ -346,19 +346,18 @@ export async function GET(request: Request) {
                         targetDates.push(formatCanonical(d2Date)); // D2
                     }
 
-                    let gapCampaignIds: string[] = [];
-                    // Auto-backfill days missing for live campaigns (e.g. while the token was expired),
-                    // otherwise lifetime spend/results stay below Ads Manager forever.
+                    let historical: { range: string; markThrough: string; campaignIds: string[] } | null = null;
+                    // One ranged read per run: D-9..D-3 (late attribution keeps changing those days, and
+                    // rows written before a field existed get it) extended back over any gap (e.g. while
+                    // the token was expired). Without it lifetime/7d numbers drift from Ads Manager.
                     if (!manualRange && !specificDate) {
                         try {
-                            const gap = await findInsightGap(supabase, { adAccountId: adAccount.id, timeZone: tz });
+                            const plan = await planHistoricalSync(supabase, { adAccountId: adAccount.id, timeZone: tz });
+                            historical = { range: `${plan.since}..${plan.until}`, markThrough: plan.markThrough, campaignIds: plan.campaignIds };
                             // First, so the Live Updates baseline can be rebased right after it (see below).
-                            if (gap) {
-                                targetDates.unshift(`${gap.since}..${gap.until}`);
-                                gapCampaignIds = gap.campaignIds;
-                            }
+                            targetDates.unshift(historical.range);
                         } catch (gapErr: any) {
-                            console.warn(`[Sync] gap check failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
+                            console.warn(`[Sync] historical range planning failed for ${adAccount.meta_ad_account_id}: ${gapErr?.message || gapErr}`);
                         }
                     }
 
@@ -430,8 +429,8 @@ export async function GET(request: Request) {
                                 return internalCampaignId ? [toInsightRow(insight, internalCampaignId)] : [];
                             });
                             await upsertInsightRows(supabase, insightsPayload);
-                            if (rangeStart !== rangeEnd && gapCampaignIds.length) {
-                                await markBackfilled(supabase, gapCampaignIds, rangeEnd);
+                            if (historical && targetDate === historical.range) {
+                                await markBackfilled(supabase, historical.campaignIds, historical.markThrough);
                             }
 
                             await supabase.from('sync_logs').insert({

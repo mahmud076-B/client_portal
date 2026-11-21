@@ -86,13 +86,16 @@ export type AssignmentMap = Map<string, string[]>;
  * The row's campaign_id is always the event's own campaign; unassigned campaigns are dropped.
  */
 export function attributeEvents(events: CampaignEvent[], organizationId: string, assignments: AssignmentMap): CampaignEventInsert[] {
-  const out: CampaignEventInsert[] = [];
+  // One row per (client, event_key): a repeated key in one batch would otherwise make the
+  // upsert fail ("cannot affect row a second time") or store whichever came last.
+  const out = new Map<string, CampaignEventInsert>();
   for (const e of events) {
     for (const clientId of new Set(assignments.get(e.campaign_id) ?? [])) {
-      out.push({ ...e, organization_id: organizationId, client_id: clientId, dedupe_key: `${clientId}:${e.event_key}` });
+      const dedupe_key = `${clientId}:${e.event_key}`;
+      if (!out.has(dedupe_key)) out.set(dedupe_key, { ...e, organization_id: organizationId, client_id: clientId, dedupe_key });
     }
   }
-  return out;
+  return [...out.values()];
 }
 
 const PAGE = 1000;
@@ -360,12 +363,21 @@ export async function buildAccountPerformanceEvents(
         title: e.title,
         body: e.body,
         metadata: { ...e.metadata, kind: e.kind, source: 'performance_insight' },
-        event_key: `${c.id}:perf:${e.kind}:${day}`,
+        event_key: perfEventKey(c.id, e.metadata.metric ?? e.kind, day),
         occurred_at,
       });
     }
   }
   return out;
+}
+
+/**
+ * One performance verdict per campaign, METRIC and judged day. Keyed by metric (not by
+ * up/down kind) so a campaign can never show both "CTR up" and "CTR down" for the same day,
+ * e.g. after a metric definition fix; the first stored verdict for that day wins.
+ */
+export function perfEventKey(campaignId: string, metric: unknown, day: string): string {
+  return `${campaignId}:perf:${String(metric)}:${day}`;
 }
 
 async function loadAssignments(supabase: SupabaseClient, campaignIds: string[]): Promise<AssignmentMap> {
