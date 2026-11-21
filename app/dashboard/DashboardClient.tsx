@@ -8,6 +8,7 @@ import Chart from 'chart.js/auto';
 
 import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
+import LiveUpdates from '@/components/events/LiveUpdates';
 
 /** Greeting by hour: morning 5–11:59, noon 12–13:59, afternoon 14–16:59, evening 17–20:59, night 21–4:59. */
 function greetingForHour(hour: number): string {
@@ -547,7 +548,7 @@ export default function DashboardClient({
 
         <div className="col-right">
           
-          {/* Future slot: Updates and Recommendations */}
+          <LiveUpdates campaignId={selectedCampaign?.id ?? null} />
 
           <div className="activity-card fade-up">
             <div className="card-title">
