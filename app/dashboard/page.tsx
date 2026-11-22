@@ -7,7 +7,7 @@ import { dayIn } from '@/lib/dates';
 import { after } from 'next/server';
 import { getCampaignRangeTotalsCached, warmCampaignRangeTotals } from '@/lib/meta/server/period-totals';
 import { deriveDeliveryStatus } from '@/lib/meta/results';
-import { buildDashboardTotals, rangeWindow, resolveDashboardRange, DEFAULT_DASHBOARD_RANGE } from '@/lib/campaigns/dashboard-totals';
+import { buildRangeAggregates, resolveDashboardRange, DEFAULT_DASHBOARD_RANGE } from '@/lib/campaigns/dashboard-totals';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +46,8 @@ export default async function DashboardPage(
         campaigns={[]} 
         selectedCampaign={null} 
         insights={[]}
-        aggregates={null}
+        aggregatesByRange={null}
+        today={null}
         range={DEFAULT_DASHBOARD_RANGE}
         lastSyncedAt={null}
       />
@@ -84,14 +85,13 @@ export default async function DashboardPage(
         .maybeSingle()
         .then((r) => r.data)
     : Promise.resolve(null);
-  const insightsP = adAccountP.then(async (acct) => {
-    let q = supabase.from('campaign_insights').select('*').eq('campaign_id', selectedCampaign.id).order('date', { ascending: true });
-    if (range !== 'maximum') {
-      const w = rangeWindow(range, dayIn(acct?.timezone_name || 'UTC'));
-      q = q.gte('date', w.since).lte('date', w.until);
-    }
-    return (await q).data;
-  });
+  // Lifetime daily rows: every range is derived from them on the client (no round trip per range).
+  const insightsP = supabase
+    .from('campaign_insights')
+    .select('*')
+    .eq('campaign_id', selectedCampaign.id)
+    .order('date', { ascending: true })
+    .then((r) => r.data);
   const metaP = adAccountP.then(async (acct) => {
     const s0 = clock();
     const all = selectedCampaign?.meta_campaign_id && acct?.organization_id
@@ -109,8 +109,7 @@ export default async function DashboardPage(
   const currency: string | null = adAccount?.currency ?? null;
   const lastSyncedAt: string | null = syncLog?.completed_at ?? null;
   // Ads Manager reports in the ad account timezone.
-  const { since: startDate, until: endDate } = rangeWindow(range, dayIn(timezoneName));
-  const metaTotals = allRanges?.[range] ?? null;
+  const today = dayIn(timezoneName);
 
   // Warm the other campaigns the client can switch to (live ones), after the response is sent.
   if (organizationId) {
@@ -125,27 +124,19 @@ export default async function DashboardPage(
     `[perf] /dashboard range=${range} auth+campaigns=${Math.round(tAuth - t0)}ms data=${Math.round(tData - tAuth)}ms meta=${tMeta}ms(${tMeta < 250 ? 'cache' : 'live'}) total=${Math.round(tData - t0)}ms`
   );
 
-  // 6. Totals + objective-aware result (shared, unit-tested logic)
-  const { totals, resultSpec, result } = buildDashboardTotals({
+  // 6. Totals for ALL ranges (shared, unit-tested logic); the client switches range locally.
+  const { byRange, messagingSpec } = buildRangeAggregates({
     campaign: selectedCampaign,
     rows: insightsData || [],
-    meta: metaTotals,
-    endDate,
+    metaByRange: allRanges,
+    today,
+    currency,
   });
 
   // Goal not synced yet but the data says "messages": label the objective accordingly.
-  if (resultSpec?.key === 'messaging' && !selectedCampaign.optimization_goal) {
+  if (messagingSpec && !selectedCampaign.optimization_goal) {
     selectedCampaign = { ...selectedCampaign, optimization_goal: 'CONVERSATIONS' };
   }
-
-  const aggregates = {
-    ...totals,
-    result,
-    currency,
-    period: range === 'maximum'
-      ? { since: metaTotals?.date_start ?? insightsData?.[0]?.date ?? null, until: metaTotals?.date_stop ?? insightsData?.at(-1)?.date ?? null }
-      : { since: startDate, until: endDate },
-  };
 
   return (
     <DashboardClient 
@@ -154,7 +145,8 @@ export default async function DashboardPage(
       campaigns={campaigns}
       selectedCampaign={selectedCampaign}
       insights={insightsData || []}
-      aggregates={aggregates}
+      aggregatesByRange={byRange}
+      today={today}
       range={range}
       lastSyncedAt={lastSyncedAt}
     />

@@ -1,6 +1,6 @@
 'use client';
 import './dashboard.css';
-import { useState, useEffect, useRef, useTransition } from 'react';
+import { useState, useEffect, useMemo, useRef, useTransition } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
@@ -10,7 +10,7 @@ import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
 import LiveUpdates from '@/components/events/LiveUpdates';
 import PageSkeleton from '@/components/ui/PageSkeleton';
-import { shouldResetRangeOnMount, withoutRange } from '@/lib/campaigns/dashboard-totals';
+import { resolveDashboardRange, rowsInRange, shouldResetRangeOnMount, withoutRange, type DashboardRange } from '@/lib/campaigns/dashboard-totals';
 
 // Module state lives as long as this browser document: false again after any full page load.
 let dashboardMountedInDocument = false;
@@ -67,23 +67,36 @@ export default function DashboardClient({
   client,
   campaigns,
   selectedCampaign,
-  insights,
-  aggregates,
-  range,
+  insights: lifetimeInsights,
+  aggregatesByRange,
+  today,
   lastSyncedAt
 }: {
   profile: UserProfile | null;
   client: ClientRecord | null;
   campaigns: any[];
   selectedCampaign: any;
+  /** Lifetime daily rows; each range is a slice of them. */
   insights: any[];
-  aggregates: any;
+  /** Totals for every range, so a range click is a local update with no server round trip. */
+  aggregatesByRange: Record<string, any> | null;
+  /** Today in the ad account timezone (range windows). */
+  today: string | null;
+  /** Range the server saw in the URL (the client reads the URL itself; kept for clarity). */
   range: string;
   lastSyncedAt: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // The URL is the in-session range state (history.pushState keeps useSearchParams in sync
+  // without a server round trip); campaign switches carry it along.
+  const range: DashboardRange = resolveDashboardRange(searchParams.get('range') ?? searchParams.get('days'));
+  const aggregates = aggregatesByRange?.[range] ?? null;
+  const insights = useMemo(
+    () => (today ? rowsInRange(lifetimeInsights || [], range, today) : lifetimeInsights || []),
+    [lifetimeInsights, range, today]
+  );
   const supabase = createClient();
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
@@ -94,10 +107,7 @@ export default function DashboardClient({
   // numbers must not stay on screen under the new name (the "stale flash").
   const [pendingCampaignId, setPendingCampaignId] = useState<string | null>(null);
   const switching = navigating && pendingCampaignId !== null && pendingCampaignId !== selectedCampaign?.id;
-  // Range being navigated to: highlighted instantly; the old range's numbers are not shown meanwhile.
-  const [pendingRange, setPendingRange] = useState<string | null>(null);
-  const rangeSwitching = navigating && pendingRange !== null && pendingRange !== range;
-  const shownRange = rangeSwitching ? pendingRange : range;
+  const shownRange = range;
 
   // A fresh visit always starts on Max: drop a range carried in by a bookmarked/reloaded URL.
   // Decided once per document, before paint, so in-app range clicks are never undone.
@@ -111,7 +121,8 @@ export default function DashboardClient({
   if (resettingRange && range === 'maximum') setResettingRange(false);
   useEffect(() => {
     dashboardMountedInDocument = true;
-    if (resettingRange) router.replace(`${pathname}${withoutRange(searchParams.toString())}`);
+    // Every range is already in the payload: dropping the URL range is a local update.
+    if (resettingRange) window.history.replaceState(null, '', `${pathname}${withoutRange(searchParams.toString())}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const showRangeSkeleton = resettingRange;
@@ -149,8 +160,8 @@ export default function DashboardClient({
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('range', newRange);
     newParams.delete('days'); // clear legacy param
-    setPendingRange(newRange);
-    startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
+    // All ranges were delivered with the page: switch locally, no server round trip.
+    window.history.pushState(null, '', `${pathname}?${newParams.toString()}`);
   };
 
   const handleSignOut = async (e: React.MouseEvent) => {
@@ -416,7 +427,7 @@ export default function DashboardClient({
         </div>
       </div>
 
-      {switching || rangeSwitching || showRangeSkeleton ? <PageSkeleton kpis={4} /> : (<>
+      {switching || showRangeSkeleton ? <PageSkeleton kpis={4} /> : (<>
       <div className="kpi-section fade-up">
         <div className="section-eyebrow">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDashboardRange, rangeWindow, shouldResetRangeOnMount, withoutRange } from '@/lib/campaigns/dashboard-totals';
+import { buildRangeAggregates, resolveDashboardRange, rangeWindow, rowsInRange, shouldResetRangeOnMount, withoutRange } from '@/lib/campaigns/dashboard-totals';
 import { allRangesCacheKey, PERIOD_TOTALS_MAX_AGE_S, RANGE_PRESETS } from '@/lib/meta/period-cache-key';
 import { parsePeriodTotalsRow } from '@/lib/meta/server/client';
 
@@ -91,5 +91,34 @@ describe('Meta batch part parsing', () => {
     const t = parsePeriodTotalsRow({ spend: '7.62', impressions: '21500', reach: '14589', clicks: '700', inline_link_clicks: '374', date_start: '2026-11-18', date_stop: '2026-11-22' });
     expect(t).toMatchObject({ spend: 7.62, impressions: 21500, reach: 14589, link_clicks: 374, date_start: '2026-11-18' });
     expect(parsePeriodTotalsRow(null).spend).toBe(0);
+  });
+});
+
+describe('all ranges in one payload (range click = local update)', () => {
+  const rows = ['2026-11-15', '2026-11-18', '2026-11-21', '2026-11-22'].map((date, i) => ({ date, spend: i + 1, impressions: 100, clicks: 10, inline_link_clicks: 2 }));
+  const meta = (spend: number, start: string | null = null) => ({
+    spend, impressions: 1000, reach: 500, clicks: 50, link_clicks: 10, frequency: 2, actions: [], action_values: [], cost_per_action_type: [],
+    video_thruplays: 0, date_start: start, date_stop: '2026-11-22',
+  });
+  it('rowsInRange: 7d = the 7 full days before today; Max = everything', () => {
+    expect(rowsInRange(rows, '7', '2026-11-22').map((r) => r.date)).toEqual(['2026-11-15', '2026-11-18', '2026-11-21']);
+    expect(rowsInRange(rows, 'today', '2026-11-22').map((r) => r.date)).toEqual(['2026-11-22']);
+    expect(rowsInRange(rows, 'maximum', '2026-11-22')).toHaveLength(4);
+  });
+  it('each range carries its own Meta preset totals and period', () => {
+    const { byRange } = buildRangeAggregates({
+      campaign: { objective: 'OUTCOME_ENGAGEMENT', optimization_goal: 'CONVERSATIONS' },
+      rows,
+      metaByRange: { '7': meta(18.41), maximum: meta(20.15, '2026-11-15') },
+      today: '2026-11-22',
+      currency: 'USD',
+    });
+    expect(byRange['7'].spend).toBe(18.41);
+    expect(byRange['7'].period).toEqual({ since: '2026-11-15', until: '2026-11-21' });
+    expect(byRange.maximum.spend).toBe(20.15);
+    expect(byRange.maximum.period).toEqual({ since: '2026-11-15', until: '2026-11-22' });
+    // no Meta totals for 14d -> synced rows fallback (15, 18, 21 Nov)
+    expect(byRange['14'].spend).toBe(6);
+    expect(byRange['14'].source).toBe('synced');
   });
 });

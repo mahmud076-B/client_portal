@@ -157,3 +157,47 @@ export function buildDashboardTotals(params: {
         result,
     };
 }
+
+export const DASHBOARD_RANGES: readonly DashboardRange[] = RANGES;
+
+/** Lifetime daily rows -> the rows inside one range window (Max = all). */
+export function rowsInRange<T extends { date?: unknown }>(rows: T[], range: DashboardRange, today: string): T[] {
+    if (range === 'maximum') return rows;
+    const w = rangeWindow(range, today);
+    return rows.filter((r) => String(r.date) >= w.since && String(r.date) <= w.until);
+}
+
+/**
+ * Totals for EVERY range in one payload, so switching range on the dashboard is a pure client
+ * update (no server round trip). Each range uses its own Meta preset totals when available.
+ */
+export function buildRangeAggregates(params: {
+    campaign: Parameters<typeof buildDashboardTotals>[0]['campaign'];
+    rows: DashboardRow[];
+    metaByRange: Partial<Record<DashboardRange, MetaPeriodTotals>> | null;
+    today: string;
+    currency: string | null;
+}) {
+    const byRange = {} as Record<DashboardRange, ReturnType<typeof buildDashboardTotals>['totals'] & {
+        result: ReturnType<typeof buildDashboardTotals>['result'];
+        currency: string | null;
+        period: { since: string | null; until: string | null };
+    }>;
+    let messagingSpec = false;
+    for (const range of RANGES) {
+        const rows = rowsInRange(params.rows, range, params.today);
+        const meta = params.metaByRange?.[range] ?? null;
+        const w = rangeWindow(range, params.today);
+        const { totals, resultSpec, result } = buildDashboardTotals({ campaign: params.campaign, rows, meta, endDate: w.until });
+        if (range === 'maximum' && resultSpec?.key === 'messaging') messagingSpec = true;
+        byRange[range] = {
+            ...totals,
+            result,
+            currency: params.currency,
+            period: range === 'maximum'
+                ? { since: meta?.date_start ?? rows[0]?.date ?? null, until: meta?.date_stop ?? rows.at(-1)?.date ?? null }
+                : { since: w.since, until: w.until },
+        };
+    }
+    return { byRange, messagingSpec };
+}
