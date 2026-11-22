@@ -1,16 +1,16 @@
 import { requireAuth } from '@/lib/supabase/auth';
 import DashboardClient from './DashboardClient';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { dayIn } from '@/lib/dates';
 import { getCampaignPeriodTotalsCached } from '@/lib/meta/server/period-totals';
-import { buildDashboardTotals, rangeWindow } from '@/lib/campaigns/dashboard-totals';
+import { buildDashboardTotals, rangeWindow, resolveDashboardRange, DEFAULT_DASHBOARD_RANGE } from '@/lib/campaigns/dashboard-totals';
 
 export const dynamic = 'force-dynamic';
 
 export type { DashboardRange } from '@/lib/campaigns/dashboard-totals';
-import type { DashboardRange } from '@/lib/campaigns/dashboard-totals';
 
 export default async function DashboardPage(
   props: { searchParams: Promise<{ campaignId?: string, days?: string, range?: string }> }
@@ -25,6 +25,17 @@ export default async function DashboardPage(
 
   const searchParams = await props.searchParams;
   const { profile, client } = session;
+
+  // Range: a fresh visit always starts on Max; in-session clicks (RSC navigations) keep their choice.
+  const h = await headers();
+  const inSessionNavigation = h.get('rsc') === '1' || h.has('next-router-state-tree');
+  const { range, resetUrl } = resolveDashboardRange({
+    requested: searchParams.range ?? searchParams.days ?? null,
+    inSessionNavigation,
+  });
+  if (resetUrl) {
+    redirect(searchParams.campaignId ? `/dashboard?campaignId=${encodeURIComponent(searchParams.campaignId)}` : '/dashboard');
+  }
   const supabase = await createClient();
 
   // 1. Fetch campaigns assigned to this client.
@@ -42,7 +53,7 @@ export default async function DashboardPage(
         selectedCampaign={null} 
         insights={[]}
         aggregates={null}
-        range="7"
+        range={DEFAULT_DASHBOARD_RANGE}
         lastSyncedAt={null}
       />
     );
@@ -57,12 +68,6 @@ export default async function DashboardPage(
     }
   }
 
-  // 3. Determine date range (support legacy `days` parameter as fallback)
-  let rawRange = searchParams.range || searchParams.days || '7';
-  if (!['today', 'maximum', '7', '14', '30'].includes(rawRange)) {
-    rawRange = '7'; // fallback
-  }
-  const range = rawRange as DashboardRange;
 
   // 4. Ad account (timezone/currency/org) + last sync in parallel.
   const adminClient = createAdminClient();
@@ -103,7 +108,8 @@ export default async function DashboardPage(
   const [{ data: insightsData }, metaTotals] = await Promise.all([
     insightsQuery,
     // ONE aggregated Meta query: spend, impressions, de-duplicated reach and results all
-    // describe the same period and match Ads Manager. Cached 5 min.
+    // describe the same period and match Ads Manager (date_preset=maximum for Max).
+    // Fresh within 60 s, never served stale (see period-totals.ts).
     selectedCampaign?.meta_campaign_id && organizationId
       ? getCampaignPeriodTotalsCached(
           organizationId,
