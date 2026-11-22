@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveDashboardRange, rangeWindow, shouldResetRangeOnMount, withoutRange } from '@/lib/campaigns/dashboard-totals';
-import { periodTotalsCacheKey, PERIOD_TOTALS_MAX_AGE_S } from '@/lib/meta/period-cache-key';
+import { allRangesCacheKey, PERIOD_TOTALS_MAX_AGE_S, RANGE_PRESETS } from '@/lib/meta/period-cache-key';
+import { parsePeriodTotalsRow } from '@/lib/meta/server/client';
 
 /**
  * Simulates one browser tab the way DashboardClient + page.tsx behave:
@@ -69,17 +70,26 @@ describe('dashboard range: fresh visits start on Max, in-app choices stick', () 
 
 describe('live Meta totals cache never serves a stale value', () => {
   const t0 = Date.UTC(2026, 10, 22, 16, 0, 0);
-  it('same campaign/window within the freshness window -> same key (fast navigation)', () => {
-    expect(periodTotalsCacheKey('o', 'c', { preset: 'maximum' }, t0)).toEqual(periodTotalsCacheKey('o', 'c', { preset: 'maximum' }, t0 + 10_000));
+  it('all ranges of a campaign share ONE entry, so switching range is a cache hit', () => {
+    expect(allRangesCacheKey('o', 'c', t0)).toEqual(allRangesCacheKey('o', 'c', t0 + 10_000));
   });
   it('after the freshness window -> new key, so the old entry is never returned (no stale-while-revalidate)', () => {
-    expect(periodTotalsCacheKey('o', 'c', { preset: 'maximum' }, t0)).not.toEqual(
-      periodTotalsCacheKey('o', 'c', { preset: 'maximum' }, t0 + PERIOD_TOTALS_MAX_AGE_S * 1000)
-    );
+    expect(allRangesCacheKey('o', 'c', t0)).not.toEqual(allRangesCacheKey('o', 'c', t0 + PERIOD_TOTALS_MAX_AGE_S * 1000));
   });
-  it('keys differ per campaign and per window', () => {
-    const a = periodTotalsCacheKey('o', 'c1', { preset: 'maximum' }, t0).join('|');
-    expect(periodTotalsCacheKey('o', 'c2', { preset: 'maximum' }, t0).join('|')).not.toBe(a);
-    expect(periodTotalsCacheKey('o', 'c1', { since: '2026-11-15', until: '2026-11-21' }, t0).join('|')).not.toBe(a);
+  it('keys differ per campaign and organization', () => {
+    const a = allRangesCacheKey('o', 'c1', t0).join('|');
+    expect(allRangesCacheKey('o', 'c2', t0).join('|')).not.toBe(a);
+    expect(allRangesCacheKey('o2', 'c1', t0).join('|')).not.toBe(a);
+  });
+  it('every dashboard range maps to the Ads Manager preset (account timezone; last N days exclude today)', () => {
+    expect(RANGE_PRESETS).toEqual({ today: 'today', '7': 'last_7d', '14': 'last_14d', '30': 'last_30d', maximum: 'maximum' });
+  });
+});
+
+describe('Meta batch part parsing', () => {
+  it('parses one insights row; empty period -> zeros', () => {
+    const t = parsePeriodTotalsRow({ spend: '7.62', impressions: '21500', reach: '14589', clicks: '700', inline_link_clicks: '374', date_start: '2026-11-18', date_stop: '2026-11-22' });
+    expect(t).toMatchObject({ spend: 7.62, impressions: 21500, reach: 14589, link_clicks: 374, date_start: '2026-11-18' });
+    expect(parsePeriodTotalsRow(null).spend).toBe(0);
   });
 });

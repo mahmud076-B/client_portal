@@ -94,6 +94,10 @@ export default function DashboardClient({
   // numbers must not stay on screen under the new name (the "stale flash").
   const [pendingCampaignId, setPendingCampaignId] = useState<string | null>(null);
   const switching = navigating && pendingCampaignId !== null && pendingCampaignId !== selectedCampaign?.id;
+  // Range being navigated to: highlighted instantly; the old range's numbers are not shown meanwhile.
+  const [pendingRange, setPendingRange] = useState<string | null>(null);
+  const rangeSwitching = navigating && pendingRange !== null && pendingRange !== range;
+  const shownRange = rangeSwitching ? pendingRange : range;
 
   // A fresh visit always starts on Max: drop a range carried in by a bookmarked/reloaded URL.
   // Decided once per document, before paint, so in-app range clicks are never undone.
@@ -145,6 +149,7 @@ export default function DashboardClient({
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('range', newRange);
     newParams.delete('days'); // clear legacy param
+    setPendingRange(newRange);
     startNavigation(() => router.push(`${pathname}?${newParams.toString()}`));
   };
 
@@ -403,15 +408,15 @@ export default function DashboardClient({
           </div>
         </div>
         <div className="date-select" role="group" aria-label="Reporting date range">
-          <button type="button" className={`date-btn ${range === 'today' ? 'active' : ''}`} onClick={() => handleRangeChange('today')} aria-pressed={range === 'today'}>Today</button>
-          <button type="button" className={`date-btn ${range === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')} aria-pressed={range === '7'}>7d</button>
-          <button type="button" className={`date-btn ${range === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')} aria-pressed={range === '14'}>14d</button>
-          <button type="button" className={`date-btn ${range === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')} aria-pressed={range === '30'}>30d</button>
-          <button type="button" className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} aria-pressed={range === 'maximum'} title="Lifetime: campaign start to today">Max</button>
+          <button type="button" className={`date-btn ${shownRange === 'today' ? 'active' : ''}`} onClick={() => handleRangeChange('today')} aria-pressed={shownRange === 'today'}>Today</button>
+          <button type="button" className={`date-btn ${shownRange === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')} aria-pressed={shownRange === '7'}>7d</button>
+          <button type="button" className={`date-btn ${shownRange === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')} aria-pressed={shownRange === '14'}>14d</button>
+          <button type="button" className={`date-btn ${shownRange === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')} aria-pressed={shownRange === '30'}>30d</button>
+          <button type="button" className={`date-btn ${shownRange === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} aria-pressed={shownRange === 'maximum'} title="Lifetime: campaign start to today">Max</button>
         </div>
       </div>
 
-      {switching || showRangeSkeleton ? <PageSkeleton kpis={4} /> : (<>
+      {switching || rangeSwitching || showRangeSkeleton ? <PageSkeleton kpis={4} /> : (<>
       <div className="kpi-section fade-up">
         <div className="section-eyebrow">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
