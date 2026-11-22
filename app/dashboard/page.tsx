@@ -1,7 +1,6 @@
 import { requireAuth } from '@/lib/supabase/auth';
 import DashboardClient from './DashboardClient';
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { dayIn } from '@/lib/dates';
@@ -26,16 +25,10 @@ export default async function DashboardPage(
   const searchParams = await props.searchParams;
   const { profile, client } = session;
 
-  // Range: a fresh visit always starts on Max; in-session clicks (RSC navigations) keep their choice.
-  const h = await headers();
-  const inSessionNavigation = h.get('rsc') === '1' || h.has('next-router-state-tree');
-  const { range, resetUrl } = resolveDashboardRange({
-    requested: searchParams.range ?? searchParams.days ?? null,
-    inSessionNavigation,
-  });
-  if (resetUrl) {
-    redirect(searchParams.campaignId ? `/dashboard?campaignId=${encodeURIComponent(searchParams.campaignId)}` : '/dashboard');
-  }
+  // Range comes from the URL (in-session choice); no range = Max. Fresh visits are reset to Max
+  // on the client (see shouldResetRangeOnMount): the server cannot tell an in-app navigation
+  // from a full load, because Next strips the RSC router headers from headers().
+  const range = resolveDashboardRange(searchParams.range ?? searchParams.days ?? null);
   const supabase = await createClient();
 
   // 1. Fetch campaigns assigned to this client.
