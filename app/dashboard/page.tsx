@@ -4,38 +4,39 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { dayIn } from '@/lib/dates';
-import { getCampaignPeriodTotalsCached } from '@/lib/meta/server/period-totals';
+import { after } from 'next/server';
+import { getCampaignRangeTotalsCached, warmCampaignRangeTotals } from '@/lib/meta/server/period-totals';
+import { deriveDeliveryStatus } from '@/lib/meta/results';
 import { buildDashboardTotals, rangeWindow, resolveDashboardRange, DEFAULT_DASHBOARD_RANGE } from '@/lib/campaigns/dashboard-totals';
 
 export const dynamic = 'force-dynamic';
+
+/** Server timing for the [perf] log line (not render output). */
+const clock = () => performance.now();
 
 export type { DashboardRange } from '@/lib/campaigns/dashboard-totals';
 
 export default async function DashboardPage(
   props: { searchParams: Promise<{ campaignId?: string, days?: string, range?: string }> }
 ) {
-  let session;
-  try {
-    session = await requireAuth();
-  } catch (err) {
-    // If not authenticated, redirect to login
-    redirect('/login');
-  }
-
+  const t0 = clock();
   const searchParams = await props.searchParams;
+  const supabase = await createClient();
+
+  // 1. Auth/profile and the client's campaigns in parallel (RLS scopes campaigns to the session's
+  //    client, so the query does not need the profile first).
+  const [session, { data: campaigns }] = await Promise.all([
+    requireAuth().catch(() => null),
+    supabase.from('campaigns').select('*'),
+  ]);
+  if (!session) redirect('/login');
   const { profile, client } = session;
+  const tAuth = clock();
 
   // Range comes from the URL (in-session choice); no range = Max. Fresh visits are reset to Max
   // on the client (see shouldResetRangeOnMount): the server cannot tell an in-app navigation
   // from a full load, because Next strips the RSC router headers from headers().
   const range = resolveDashboardRange(searchParams.range ?? searchParams.days ?? null);
-  const supabase = await createClient();
-
-  // 1. Fetch campaigns assigned to this client.
-  // The RLS policy "Clients can read assigned campaigns" will ensure only authorized campaigns are returned.
-  const { data: campaigns } = await supabase
-    .from('campaigns')
-    .select('*, ad_accounts(id, timezone_name)');
 
   if (!campaigns || campaigns.length === 0) {
     return (
@@ -62,55 +63,67 @@ export default async function DashboardPage(
   }
 
 
-  // 4. Ad account (timezone/currency/org) + last sync in parallel.
+  // 2. Everything else in ONE parallel stage:
+  //    - ad account (timezone/currency/org) -> daily rows (chart; window needs the timezone)
+  //    - ad account -> Meta totals for ALL ranges in one Graph batch call, cached together, so a
+  //      range switch is a cache hit and only the first view of a campaign waits on Meta
+  //    - last successful sync
   const adminClient = createAdminClient();
-  const [{ data: adAccount }, { data: syncLog }] = await Promise.all([
-    selectedCampaign?.ad_account_id
-      ? adminClient.from('ad_accounts').select('organization_id, timezone_name, currency').eq('id', selectedCampaign.ad_account_id).single()
-      : Promise.resolve({ data: null }),
-    selectedCampaign?.ad_account_id
-      ? adminClient
-          .from('sync_logs')
-          .select('completed_at')
-          .eq('ad_account_id', selectedCampaign.ad_account_id)
-          .eq('status', 'success')
-          .not('completed_at', 'is', null)
-          .order('completed_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  const adAccountP = selectedCampaign?.ad_account_id
+    ? adminClient.from('ad_accounts').select('organization_id, timezone_name, currency').eq('id', selectedCampaign.ad_account_id).single().then((r) => r.data)
+    : Promise.resolve(null);
+  const syncLogP = selectedCampaign?.ad_account_id
+    ? adminClient
+        .from('sync_logs')
+        .select('completed_at')
+        .eq('ad_account_id', selectedCampaign.ad_account_id)
+        .eq('status', 'success')
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then((r) => r.data)
+    : Promise.resolve(null);
+  const insightsP = adAccountP.then(async (acct) => {
+    let q = supabase.from('campaign_insights').select('*').eq('campaign_id', selectedCampaign.id).order('date', { ascending: true });
+    if (range !== 'maximum') {
+      const w = rangeWindow(range, dayIn(acct?.timezone_name || 'UTC'));
+      q = q.gte('date', w.since).lte('date', w.until);
+    }
+    return (await q).data;
+  });
+  const metaP = adAccountP.then(async (acct) => {
+    const s0 = clock();
+    const all = selectedCampaign?.meta_campaign_id && acct?.organization_id
+      ? await getCampaignRangeTotalsCached(acct.organization_id, selectedCampaign.meta_campaign_id)
+      : null;
+    return { all, ms: clock() - s0 };
+  });
+  const [adAccount, syncLog, insightsData, meta] = await Promise.all([adAccountP, syncLogP, insightsP, metaP]);
+  const allRanges = meta.all;
+  const tMeta = Math.round(meta.ms);
+  const tData = clock();
+
   const timezoneName: string = adAccount?.timezone_name || 'UTC';
   const organizationId: string | null = adAccount?.organization_id ?? null;
   const currency: string | null = adAccount?.currency ?? null;
   const lastSyncedAt: string | null = syncLog?.completed_at ?? null;
-
   // Ads Manager reports in the ad account timezone.
   const { since: startDate, until: endDate } = rangeWindow(range, dayIn(timezoneName));
+  const metaTotals = allRanges?.[range] ?? null;
 
-  // 5. Daily rows from our DB (charts + fallback) and the Meta period totals, in parallel.
-  let insightsQuery = supabase
-    .from('campaign_insights')
-    .select('*')
-    .eq('campaign_id', selectedCampaign.id)
-    .order('date', { ascending: true });
-  if (range !== 'maximum') {
-    insightsQuery = insightsQuery.gte('date', startDate).lte('date', endDate);
+  // Warm the other campaigns the client can switch to (live ones), after the response is sent.
+  if (organizationId) {
+    const others = campaigns
+      .filter((c) => c.id !== selectedCampaign.id && c.meta_campaign_id && c.ad_account_id === selectedCampaign.ad_account_id && deriveDeliveryStatus(c).isLive)
+      .slice(0, 8)
+      .map((c) => c.meta_campaign_id as string);
+    if (others.length) after(() => warmCampaignRangeTotals(organizationId, others));
   }
 
-  const [{ data: insightsData }, metaTotals] = await Promise.all([
-    insightsQuery,
-    // ONE aggregated Meta query: spend, impressions, de-duplicated reach and results all
-    // describe the same period and match Ads Manager (date_preset=maximum for Max).
-    // Fresh within 60 s, never served stale (see period-totals.ts).
-    selectedCampaign?.meta_campaign_id && organizationId
-      ? getCampaignPeriodTotalsCached(
-          organizationId,
-          selectedCampaign.meta_campaign_id,
-          range === 'maximum' ? { preset: 'maximum' } : { since: startDate, until: endDate }
-        )
-      : Promise.resolve(null),
-  ]);
+  console.info(
+    `[perf] /dashboard range=${range} auth+campaigns=${Math.round(tAuth - t0)}ms data=${Math.round(tData - tAuth)}ms meta=${tMeta}ms(${tMeta < 250 ? 'cache' : 'live'}) total=${Math.round(tData - t0)}ms`
+  );
 
   // 6. Totals + objective-aware result (shared, unit-tested logic)
   const { totals, resultSpec, result } = buildDashboardTotals({

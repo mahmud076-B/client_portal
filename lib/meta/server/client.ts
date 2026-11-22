@@ -90,6 +90,34 @@ export interface CampaignPeriodTotals {
     date_stop: string | null;
 }
 
+export const PERIOD_TOTALS_FIELDS =
+    'spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,cost_per_action_type,video_thruplay_watched_actions';
+
+/** One Meta insights row (no time_increment) -> CampaignPeriodTotals. Empty period -> zeros. */
+export function parsePeriodTotalsRow(row: any): CampaignPeriodTotals {
+    const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0; };
+    if (!row) {
+        return { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, frequency: null, actions: [], action_values: [], cost_per_action_type: [], video_thruplays: 0, date_start: null, date_stop: null };
+    }
+    const thru = Array.isArray(row.video_thruplay_watched_actions)
+        ? row.video_thruplay_watched_actions.reduce((s: number, a: any) => s + num(a?.value), 0)
+        : null;
+    return {
+        spend: num(row.spend),
+        impressions: num(row.impressions),
+        reach: row.reach != null ? num(row.reach) : null,
+        clicks: num(row.clicks),
+        link_clicks: num(row.inline_link_clicks),
+        frequency: row.frequency != null ? num(row.frequency) : null,
+        actions: Array.isArray(row.actions) ? row.actions : [],
+        action_values: Array.isArray(row.action_values) ? row.action_values : [],
+        cost_per_action_type: Array.isArray(row.cost_per_action_type) ? row.cost_per_action_type : [],
+        video_thruplays: thru,
+        date_start: row.date_start ?? null,
+        date_stop: row.date_stop ?? null,
+    };
+}
+
 /**
  * Basic server-side Meta API client.
  *
@@ -269,37 +297,52 @@ export class MetaServerClient {
     ): Promise<CampaignPeriodTotals | null> {
         try {
             const params: Record<string, string> = {
-                fields: 'spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,cost_per_action_type,video_thruplay_watched_actions',
+                fields: PERIOD_TOTALS_FIELDS,
             };
             if ('preset' in window) params.date_preset = 'maximum';
             else params.time_range = JSON.stringify(window);
             const data = await this.fetch(`/${metaCampaignId}/insights`, params);
-            const row = Array.isArray(data?.data) ? data.data[0] : null;
-            const num = (v: unknown) => { const n = parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : 0; };
-            if (!row) {
-                return { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, frequency: null, actions: [], action_values: [], cost_per_action_type: [], video_thruplays: 0, date_start: null, date_stop: null };
-            }
-            const thru = Array.isArray(row.video_thruplay_watched_actions)
-                ? row.video_thruplay_watched_actions.reduce((s: number, a: any) => s + num(a?.value), 0)
-                : null;
-            return {
-                spend: num(row.spend),
-                impressions: num(row.impressions),
-                reach: row.reach != null ? num(row.reach) : null,
-                clicks: num(row.clicks),
-                link_clicks: num(row.inline_link_clicks),
-                frequency: row.frequency != null ? num(row.frequency) : null,
-                actions: Array.isArray(row.actions) ? row.actions : [],
-                action_values: Array.isArray(row.action_values) ? row.action_values : [],
-                cost_per_action_type: Array.isArray(row.cost_per_action_type) ? row.cost_per_action_type : [],
-                video_thruplays: thru,
-                date_start: row.date_start ?? null,
-                date_stop: row.date_stop ?? null,
-            };
+            return parsePeriodTotalsRow(Array.isArray(data?.data) ? data.data[0] : null);
         } catch (error: any) {
             console.error(`[MetaServerClient] Failed to fetch period totals for campaign ${metaCampaignId}:`, error.message);
             return null;
         }
+    }
+
+    /**
+     * Totals for several Ads Manager date presets of ONE campaign in a single HTTP round trip
+     * (Graph batch API; Meta runs the parts in parallel). Presets use the ad account timezone,
+     * exactly like Ads Manager: today, last_7d/14d/30d (full days, excluding today), maximum.
+     * A preset whose part failed is missing from the result.
+     */
+    async getCampaignPresetTotals(metaCampaignId: string, presets: readonly string[]): Promise<Record<string, CampaignPeriodTotals>> {
+        const batch = presets.map((p) => ({
+            method: 'GET',
+            relative_url: `${metaCampaignId}/insights?fields=${encodeURIComponent(PERIOD_TOTALS_FIELDS)}&date_preset=${p}`,
+        }));
+        const response = await fetch(`${GRAPH_API_URL}/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ access_token: this.accessToken, batch: JSON.stringify(batch), include_headers: 'false' }).toString(),
+            cache: 'no-store',
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const errorObj = new Error(`Meta API Error: ${error.error?.message || 'Unknown error'}`);
+            (errorObj as any).metaError = error.error;
+            throw errorObj;
+        }
+        const parts: ({ code: number; body: string } | null)[] = await response.json();
+        const out: Record<string, CampaignPeriodTotals> = {};
+        presets.forEach((p, i) => {
+            const part = parts?.[i];
+            if (!part || part.code !== 200) return;
+            try {
+                const data = JSON.parse(part.body);
+                out[p] = parsePeriodTotalsRow(Array.isArray(data?.data) ? data.data[0] : null);
+            } catch { /* skip malformed part */ }
+        });
+        return out;
     }
 
     /**
