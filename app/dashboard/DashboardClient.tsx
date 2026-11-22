@@ -386,7 +386,7 @@ export default function DashboardClient({
           <button type="button" className={`date-btn ${range === '7' ? 'active' : ''}`} onClick={() => handleRangeChange('7')} aria-pressed={range === '7'}>7d</button>
           <button type="button" className={`date-btn ${range === '14' ? 'active' : ''}`} onClick={() => handleRangeChange('14')} aria-pressed={range === '14'}>14d</button>
           <button type="button" className={`date-btn ${range === '30' ? 'active' : ''}`} onClick={() => handleRangeChange('30')} aria-pressed={range === '30'}>30d</button>
-          <button type="button" className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} aria-pressed={range === 'maximum'} title="All available data">Max</button>
+          <button type="button" className={`date-btn ${range === 'maximum' ? 'active' : ''}`} onClick={() => handleRangeChange('maximum')} aria-pressed={range === 'maximum'} title="Lifetime: campaign start to today">Max</button>
         </div>
       </div>
 

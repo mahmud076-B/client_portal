@@ -3,7 +3,8 @@ import { unstable_cache } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MetaServerClient, type CampaignPeriodTotals } from '@/lib/meta/server/client';
 
-export type PeriodWindow = { since: string; until: string } | { preset: 'maximum' };
+import { PERIOD_TOTALS_MAX_AGE_S, periodTotalsCacheKey, type PeriodWindow } from '@/lib/meta/period-cache-key';
+export type { PeriodWindow };
 
 /** Live Meta call; throws on failure so failures are never cached. */
 async function fetchTotals(organizationId: string, metaCampaignId: string, window: PeriodWindow): Promise<CampaignPeriodTotals> {
@@ -21,9 +22,8 @@ async function fetchTotals(organizationId: string, metaCampaignId: string, windo
 }
 
 /**
- * Ads Manager-equivalent campaign totals for a period, cached for 5 minutes per
- * campaign + window so dashboard navigation does not wait on Meta every click.
- * (Meta itself refreshes delivery numbers roughly every 15 minutes.)
+ * Ads Manager-equivalent campaign totals for a period. At most PERIOD_TOTALS_MAX_AGE_S old,
+ * shared across users/requests within that window so quick navigation does not wait on Meta.
  * Returns null when Meta is unreachable; callers fall back to synced DB rows.
  */
 export async function getCampaignPeriodTotalsCached(
@@ -31,12 +31,11 @@ export async function getCampaignPeriodTotalsCached(
     metaCampaignId: string,
     window: PeriodWindow
 ): Promise<CampaignPeriodTotals | null> {
-    const key = 'preset' in window ? 'maximum' : `${window.since}..${window.until}`;
     try {
         return await unstable_cache(
             () => fetchTotals(organizationId, metaCampaignId, window),
-            ['meta-period-totals-v1', organizationId, metaCampaignId, key],
-            { revalidate: 300 }
+            periodTotalsCacheKey(organizationId, metaCampaignId, window),
+            { revalidate: PERIOD_TOTALS_MAX_AGE_S * 2 }
         )();
     } catch (err: any) {
         console.error(`[Dashboard] Meta period totals failed for campaign ${metaCampaignId}: ${err?.message || err}`);

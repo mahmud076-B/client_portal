@@ -14,6 +14,28 @@ import { computeResult, resolveResultSpec, resolveResultSpecForData, type Comput
 
 export type DashboardRange = 'today' | '7' | '14' | '30' | 'maximum';
 
+/** Every visit starts on lifetime ("Max"), so clients never mistake 7 days for the whole result. */
+export const DEFAULT_DASHBOARD_RANGE: DashboardRange = 'maximum';
+const RANGES: readonly DashboardRange[] = ['today', '7', '14', '30', 'maximum'];
+
+/**
+ * The range to render.
+ * - A fresh visit (full page load: login redirect, typed/bookmarked URL, reload) always starts on Max,
+ *   even if the URL carries an old ?range= / ?days=; `resetUrl` tells the page to drop it.
+ * - In-session navigation (the client clicked a range / switched campaign) keeps the chosen range.
+ */
+export function resolveDashboardRange(params: { requested?: string | null; inSessionNavigation: boolean }): {
+    range: DashboardRange;
+    resetUrl: boolean;
+} {
+    const requested = params.requested ?? null;
+    if (!params.inSessionNavigation) {
+        return { range: DEFAULT_DASHBOARD_RANGE, resetUrl: requested !== null && requested !== DEFAULT_DASHBOARD_RANGE };
+    }
+    const valid = (RANGES as readonly string[]).includes(requested ?? '') ? (requested as DashboardRange) : DEFAULT_DASHBOARD_RANGE;
+    return { range: valid, resetUrl: false };
+}
+
 /**
  * Ads Manager presets, in the ad account timezone: "Last N days" = the N full days
  * BEFORE today (today excluded), e.g. on 22 Nov "Last 7 days" = 15–21 Nov. "today" = today.
