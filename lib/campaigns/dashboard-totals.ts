@@ -18,22 +18,27 @@ export type DashboardRange = 'today' | '7' | '14' | '30' | 'maximum';
 export const DEFAULT_DASHBOARD_RANGE: DashboardRange = 'maximum';
 const RANGES: readonly DashboardRange[] = ['today', '7', '14', '30', 'maximum'];
 
+/** The range to render for a URL value: a valid choice, else Max. */
+export function resolveDashboardRange(requested: string | null | undefined): DashboardRange {
+    return (RANGES as readonly string[]).includes(requested ?? '') ? (requested as DashboardRange) : DEFAULT_DASHBOARD_RANGE;
+}
+
 /**
- * The range to render.
- * - A fresh visit (full page load: login redirect, typed/bookmarked URL, reload) always starts on Max,
- *   even if the URL carries an old ?range= / ?days=; `resetUrl` tells the page to drop it.
- * - In-session navigation (the client clicked a range / switched campaign) keeps the chosen range.
+ * Client side, on the dashboard's FIRST mount in this document (login redirect, typed or
+ * bookmarked URL, full reload): a non-Max range in the URL is dropped so the visit starts on Max.
+ * Later mounts/renders in the same document (range clicks, campaign switches) keep the choice.
  */
-export function resolveDashboardRange(params: { requested?: string | null; inSessionNavigation: boolean }): {
-    range: DashboardRange;
-    resetUrl: boolean;
-} {
-    const requested = params.requested ?? null;
-    if (!params.inSessionNavigation) {
-        return { range: DEFAULT_DASHBOARD_RANGE, resetUrl: requested !== null && requested !== DEFAULT_DASHBOARD_RANGE };
-    }
-    const valid = (RANGES as readonly string[]).includes(requested ?? '') ? (requested as DashboardRange) : DEFAULT_DASHBOARD_RANGE;
-    return { range: valid, resetUrl: false };
+export function shouldResetRangeOnMount(params: { firstMountInDocument: boolean; urlRange: string | null }): boolean {
+    return params.firstMountInDocument && params.urlRange !== null && resolveDashboardRange(params.urlRange) !== DEFAULT_DASHBOARD_RANGE;
+}
+
+/** URL query for the dashboard without any range (keeps the selected campaign). */
+export function withoutRange(query: string): string {
+    const p = new URLSearchParams(query);
+    p.delete('range');
+    p.delete('days');
+    const q = p.toString();
+    return q ? `?${q}` : '';
 }
 
 /**

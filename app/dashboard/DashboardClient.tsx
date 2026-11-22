@@ -10,6 +10,10 @@ import { UserProfile, ClientRecord } from '@/lib/supabase/auth';
 import { deriveDeliveryStatus, objectiveLabel, type DeliveryStatus } from '@/lib/meta/results';
 import LiveUpdates from '@/components/events/LiveUpdates';
 import PageSkeleton from '@/components/ui/PageSkeleton';
+import { shouldResetRangeOnMount, withoutRange } from '@/lib/campaigns/dashboard-totals';
+
+// Module state lives as long as this browser document: false again after any full page load.
+let dashboardMountedInDocument = false;
 import { dhakaHour, greetingForHour } from '@/lib/ui/greeting';
 
 /**
@@ -90,6 +94,23 @@ export default function DashboardClient({
   // numbers must not stay on screen under the new name (the "stale flash").
   const [pendingCampaignId, setPendingCampaignId] = useState<string | null>(null);
   const switching = navigating && pendingCampaignId !== null && pendingCampaignId !== selectedCampaign?.id;
+
+  // A fresh visit always starts on Max: drop a range carried in by a bookmarked/reloaded URL.
+  // Decided once per document, before paint, so in-app range clicks are never undone.
+  const [resettingRange, setResettingRange] = useState(() =>
+    shouldResetRangeOnMount({
+      firstMountInDocument: !dashboardMountedInDocument,
+      urlRange: searchParams.get('range') ?? searchParams.get('days'),
+    })
+  );
+  // Reset landed on Max: from now on every range is the client's own in-session choice.
+  if (resettingRange && range === 'maximum') setResettingRange(false);
+  useEffect(() => {
+    dashboardMountedInDocument = true;
+    if (resettingRange) router.replace(`${pathname}${withoutRange(searchParams.toString())}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const showRangeSkeleton = resettingRange;
   const greeting = useGreeting();
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   const delivery = deriveDeliveryStatus(selectedCampaign || {});
@@ -390,7 +411,7 @@ export default function DashboardClient({
         </div>
       </div>
 
-      {switching ? <PageSkeleton kpis={4} /> : (<>
+      {switching || showRangeSkeleton ? <PageSkeleton kpis={4} /> : (<>
       <div className="kpi-section fade-up">
         <div className="section-eyebrow">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
